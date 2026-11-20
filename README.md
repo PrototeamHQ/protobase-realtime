@@ -204,9 +204,12 @@ WebSocket clients, phoenix.js among them.
 Publishing a GitHub release tagged `v1.2.3` publishes the npm packages at `1.2.3` (`.github/workflows/npm.yml`); a
 prerelease such as `v1.3.0-rc.1` goes under npm's `next` dist-tag. The workflow cross-compiles the relay
 (`npm/pack.mjs`), installs the packages from a local registry on each platform and runs the relay npm picked
-(`npm/verify-install.sh`), then publishes with the repository secret `NPM_TOKEN`. Run by hand with an existing tag, it
-publishes that tag again, skipping versions npm already has. Pull requests that touch the packaging run every step but
-the publish.
+(`npm/verify-install.sh`), then publishes through npm's trusted publishing, with no stored npm token. Run by hand with
+an existing tag, it publishes that tag again, skipping versions npm already has. Pull requests that touch the packaging
+run every step but the publish.
+
+npm trusts the workflow only for a package that already exists, so a new package is published once by hand, then
+`.github/workflows/npm.yml` in this repository is registered as its trusted publisher in the package's settings on npm.
 
 ```sh
 npm ci --prefix npm && npm test --prefix npm   # the launcher's unit tests

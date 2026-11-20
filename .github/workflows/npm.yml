@@ -90,10 +90,16 @@ jobs:
           VERSION: ${{ needs.pack.outputs.version }}
         run: npm/verify-install.sh "$RUNNER_TEMP/packages" "$VERSION"
 
+  # Publishes through npm's trusted publishing: npm trusts this workflow for each package and takes the job's OIDC
+  # token in place of a stored npm token. Trusted publishing also attaches provenance, once the repository is public.
+  # npm accepts OIDC tokens from GitHub's hosted runners only.
   publish:
     needs: [pack, verify]
     if: ${{ github.event_name != 'pull_request' }}
-    runs-on: hetzner-vm
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -102,18 +108,12 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install --global npm@^11.5.1
       - run: npm ci --prefix npm
       - uses: actions/download-artifact@v8
         with:
           name: packages
           path: ${{ runner.temp }}/packages
       - name: Publish the packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::Publishing needs the repository secret NPM_TOKEN, an npm token that may publish @protobase packages"
-            exit 1
-          fi
-          node npm/publish.mjs "$RUNNER_TEMP/packages"
+        run: node npm/publish.mjs "$RUNNER_TEMP/packages"
