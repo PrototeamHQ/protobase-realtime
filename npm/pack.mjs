@@ -28,6 +28,7 @@ const packed = []
 for (const platform of platforms) {
   const name = packageName(platform)
   const dir = path.join(staging, `${platform.os}-${platform.cpu}`)
+  // go build -o creates the binary's missing parent directories, dir among them.
   execFileSync(
     "go",
     [
