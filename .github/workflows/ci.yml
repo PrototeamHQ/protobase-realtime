@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Our own runners: GitHub-hosted minutes are billed for a private repository.
+    runs-on: hetzner-vm
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # The repository starts without Go code; once go.mod exists, every change is vetted and tested.
+      - name: Test
+        run: |
+          if [ ! -f go.mod ]; then echo "no go.mod yet"; exit 0; fi
+          go vet ./...
+          go test ./...
