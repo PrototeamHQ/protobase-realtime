@@ -2,7 +2,7 @@
   "name": "@protobase/realtime",
   "version": "0.0.0",
   "description": "The realtime relay, prebuilt for macOS, Linux and Windows",
-  "repository": "github:PrototeamHQ/protobase-realtime",
+  "repository": { "type": "git", "url": "git+https://github.com/PrototeamHQ/protobase-realtime.git" },
   "type": "module",
   "exports": "./index.js",
   "bin": {

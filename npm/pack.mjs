@@ -51,7 +51,7 @@ for (const platform of platforms) {
     name,
     version,
     description: `The realtime relay for ${platform.os}-${platform.cpu}; install @protobase/realtime instead`,
-    repository: "github:PrototeamHQ/protobase-realtime",
+    repository: { type: "git", url: "git+https://github.com/PrototeamHQ/protobase-realtime.git" },
     os: [platform.os],
     cpu: [platform.cpu],
     files: ["bin"],
