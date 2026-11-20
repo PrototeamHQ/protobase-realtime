@@ -67,6 +67,27 @@ The apps file lists every app the relay serves; the relay reads it at startup an
 
 The relay terminates no TLS: run it behind a reverse proxy that does.
 
+### From npm
+
+The relay is published prebuilt on npm for macOS (arm64, x64), Linux (arm64, x64) and Windows (x64), so it runs without
+Go:
+
+```sh
+npm install @protobase/realtime
+RELAY_APPS_FILE=apps.json npx protobase-realtime
+```
+
+`@protobase/realtime` depends on one optional package per platform, `@protobase/realtime-<os>-<arch>` with Node's
+`process.platform` and `process.arch` names, and npm installs only the one that matches the machine; an install that
+omits optional dependencies has no relay. A tool that starts the relay itself takes the binary's path from
+`binaryPath()`:
+
+```js
+import { binaryPath } from "@protobase/realtime"
+```
+
+`protobase-realtime --version` prints the version, which is the release's.
+
 ## Tickets
 
 A ticket is a JWT signed with HS256 by one of the app's ticket keys; any stock JWT library issues it.
@@ -177,3 +198,17 @@ go vet ./... && go test ./...
 
 Unit tests sit next to the code; `tests/` holds the integration tests, which serve the relay and connect real
 WebSocket clients, phoenix.js among them.
+
+### Releasing
+
+Publishing a GitHub release tagged `v1.2.3` publishes the npm packages at `1.2.3` (`.github/workflows/npm.yml`); a
+prerelease such as `v1.3.0-rc.1` goes under npm's `next` dist-tag. The workflow cross-compiles the relay
+(`npm/pack.mjs`), installs the packages from a local registry on each platform and runs the relay npm picked
+(`npm/verify-install.sh`), then publishes with the repository secret `NPM_TOKEN`. Run by hand with an existing tag, it
+publishes that tag again, skipping versions npm already has. Pull requests that touch the packaging run every step but
+the publish.
+
+```sh
+npm ci --prefix npm && npm test --prefix npm   # the launcher's unit tests
+node npm/pack.mjs 0.0.0-dev /tmp/packages && npm/verify-install.sh /tmp/packages 0.0.0-dev
+```
