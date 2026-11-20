@@ -19,16 +19,17 @@ const outDir = path.resolve(out)
 const staging = mkdtempSync(path.join(tmpdir(), "realtime-pack-"))
 mkdirSync(outDir, { recursive: true })
 
-// npm pack prints the tarball's file name and refuses a version that is not valid semver.
+// The tarball's file name, from the report npm pack prints with --json.
 function pack(dir) {
-  return execFileSync("npm", ["pack", "--pack-destination", outDir], { cwd: dir, encoding: "utf8" }).trim()
+  const report = execFileSync("npm", ["pack", "--json", "--pack-destination", outDir], { cwd: dir, encoding: "utf8" })
+  return JSON.parse(report)[0].filename
 }
 
 const packed = []
 for (const platform of platforms) {
   const name = packageName(platform)
   const dir = path.join(staging, `${platform.os}-${platform.cpu}`)
-  // go build -o creates the binary's missing parent directories, dir among them.
+  mkdirSync(path.join(dir, "bin"), { recursive: true })
   execFileSync(
     "go",
     [
