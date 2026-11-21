@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 	"github.com/PrototeamHQ/protobase-realtime/internal/hub"
 	"github.com/PrototeamHQ/protobase-realtime/internal/seen"
 )
@@ -17,11 +18,25 @@ const (
 	RulesPath             = "/apps/{app}/people/rules"
 )
 
-// Mount adds the app commands to a mux.
-func Mount(mux *http.ServeMux, h *hub.Hub, now func() time.Time) {
-	mux.Handle("POST "+PublishPath, &publish{hub: h, ids: seen.New(PublishIDWindow), now: now})
-	mux.Handle("POST "+AddToChannelPath, &members{hub: h, change: (*hub.App).AddToChannel})
-	mux.Handle("POST "+RemoveFromChannelPath, &members{hub: h, change: (*hub.App).RemoveFromChannel})
-	mux.Handle("POST "+CloseSessionPath, &closeSession{hub: h, now: now})
-	mux.Handle("POST "+RulesPath, &rules{hub: h})
+// Mount adds the app commands to a mux, reporting their panics to errs.
+func Mount(mux *http.ServeMux, h *hub.Hub, now func() time.Time, errs *errreport.Reporter) {
+	handle := func(path string, command http.Handler) {
+		mux.Handle("POST "+path, recovering{command: command, errs: errs})
+	}
+	handle(PublishPath, &publish{hub: h, ids: seen.New(PublishIDWindow), now: now})
+	handle(AddToChannelPath, &members{hub: h, change: (*hub.App).AddToChannel})
+	handle(RemoveFromChannelPath, &members{hub: h, change: (*hub.App).RemoveFromChannel})
+	handle(CloseSessionPath, &closeSession{hub: h, now: now})
+	handle(RulesPath, &rules{hub: h})
+}
+
+// recovering reports a command's panic with the app it was for.
+type recovering struct {
+	command http.Handler
+	errs    *errreport.Reporter
+}
+
+func (c recovering) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer c.errs.Recover(r.PathValue("app"))
+	c.command.ServeHTTP(w, r)
 }

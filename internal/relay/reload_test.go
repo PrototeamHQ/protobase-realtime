@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/config"
+	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 )
 
 const key = "presence-key-0123456789abcdefghij"
@@ -19,7 +20,7 @@ func TestReloadStartsAndStopsPresenceReporters(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	p := &config.Presence{URL: "http://app.invalid/presence", Key: key, GraceSeconds: 5}
-	r := New([]config.App{app("a", p)}, time.Now)
+	r := New([]config.App{app("a", p)}, time.Now, errreport.Off())
 	r.Start(ctx)
 	a := r.reporting["a"]
 	r.Reload([]config.App{app("b", p)})
@@ -38,7 +39,8 @@ func TestReloadStartsAndStopsPresenceReporters(t *testing.T) {
 func TestReloadKeepsTheTrackerAndReplacesAReporterWhoseURLChanged(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	r := New([]config.App{app("a", &config.Presence{URL: "http://old.invalid/", Key: key})}, time.Now)
+	r := New([]config.App{app("a", &config.Presence{URL: "http://old.invalid/", Key: key})}, time.Now,
+		errreport.Off())
 	r.Start(ctx)
 	before := r.Reporter("a")
 	r.Reload([]config.App{app("a", &config.Presence{URL: "http://old.invalid/", Key: key, GraceSeconds: 9})})
@@ -56,7 +58,7 @@ func TestReloadKeepsTheTrackerAndReplacesAReporterWhoseURLChanged(t *testing.T) 
 }
 
 func TestReloadBeforeStartRunsNoReporter(t *testing.T) {
-	r := New([]config.App{app("a", nil)}, time.Now)
+	r := New([]config.App{app("a", nil)}, time.Now, errreport.Off())
 	r.Reload([]config.App{app("a", &config.Presence{URL: "http://app.invalid/", Key: key})})
 	if r.Reporter("a") == nil || r.reporting["a"].stop != nil {
 		t.Fatal("a reporter ran before Start")

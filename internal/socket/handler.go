@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 	"github.com/PrototeamHQ/protobase-realtime/internal/hub"
 	"github.com/PrototeamHQ/protobase-realtime/internal/phoenix"
 	"github.com/PrototeamHQ/protobase-realtime/internal/ticket"
@@ -35,6 +36,7 @@ type Handler struct {
 	Hub     *hub.Hub
 	Tickets *ticket.Verifier
 	Now     func() time.Time
+	Errors  *errreport.Reporter
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +49,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid ticket", http.StatusUnauthorized)
 		return
 	}
+	defer h.Errors.Recover(t.App)
 	// A reload may have removed the app since its ticket was verified.
 	app, ok := h.Hub.App(t.App)
 	if !ok {
@@ -76,8 +79,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	written := make(chan struct{})
 	go func() {
+		defer close(written)
+		defer h.Errors.Contain(t.App, func() { _ = ws.CloseNow() })
 		out.write(writeCtx, ws)
-		close(written)
 	}()
 	h.read(r.Context(), ws, &session{app: app, conn: conn, out: out, now: h.Now})
 	<-written

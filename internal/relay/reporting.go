@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/config"
+	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 	"github.com/PrototeamHQ/protobase-realtime/internal/presence"
 )
 
@@ -18,9 +19,10 @@ type reporting struct {
 	done chan struct{}
 }
 
-func newReporting(app config.App, now func() time.Time, started time.Time) *reporting {
+func newReporting(app config.App, now func() time.Time, started time.Time, errs *errreport.Reporter) *reporting {
 	t := presence.NewTracker(grace(app.Presence), presence.Debounce, app.Limits.Connections, now)
-	return &reporting{tracker: t, reporter: presence.NewReporter(t, app.Presence.URL, app.Presence.Key, started)}
+	stuck := func(err error) { errs.Error(app.ID, err) }
+	return &reporting{tracker: t, reporter: presence.NewReporter(t, app.Presence.URL, app.Presence.Key, started, stuck)}
 }
 
 func grace(p *config.Presence) time.Duration {
@@ -34,7 +36,8 @@ func (p *reporting) reconfigure(app config.App) {
 		return
 	}
 	p.halt()
-	p.reporter = presence.NewReporter(p.tracker, app.Presence.URL, app.Presence.Key, p.reporter.Started)
+	p.reporter = presence.NewReporter(p.tracker, app.Presence.URL, app.Presence.Key, p.reporter.Started,
+		p.reporter.Stuck)
 }
 
 // run starts the reporter unless it runs already.

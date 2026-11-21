@@ -14,7 +14,7 @@ func (r *Relay) Reload(apps []config.App) {
 		}
 		p := r.reporting[app.ID]
 		if p == nil {
-			p = newReporting(app, r.now, r.started)
+			p = newReporting(app, r.now, r.started, r.errs)
 		} else {
 			p.reconfigure(app)
 		}

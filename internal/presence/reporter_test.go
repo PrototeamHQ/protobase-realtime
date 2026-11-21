@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,7 +26,7 @@ func TestReporterRetriesUntilTheAppAccepts(t *testing.T) {
 		}
 	}))
 	defer app.Close()
-	r := NewReporter(tr, app.URL, "the-key", time.UnixMilli(1000))
+	r := NewReporter(tr, app.URL, "the-key", time.UnixMilli(1000), func(error) {})
 	tr.Change("u1", 1, 0)
 	c.pass(Debounce)
 	if r.Flush(context.Background()) == nil {
@@ -41,5 +42,17 @@ func TestReporterRetriesUntilTheAppAccepts(t *testing.T) {
 	want := `{"started":1000,"changes":[{"user":"u1","status":"online","at":1800000000000}]}`
 	if len(bodies) != 2 || bodies[0] != want || bodies[1] != want {
 		t.Fatalf("got %q", bodies)
+	}
+}
+
+func TestAReportThatCannotBePostedKeepsTheURLOutOfItsError(t *testing.T) {
+	c := &clock{time.Unix(1_800_000_000, 0)}
+	tr := newTracker(c, 10)
+	r := NewReporter(tr, "http://127.0.0.1:1/presence?secret=s3cr3t", "the-key", time.UnixMilli(1000), func(error) {})
+	tr.Change("u1", 1, 0)
+	c.pass(Debounce)
+	err := r.Flush(context.Background())
+	if err == nil || strings.Contains(err.Error(), "s3cr3t") || strings.Contains(err.Error(), "/presence") {
+		t.Fatalf("got %v", err)
 	}
 }

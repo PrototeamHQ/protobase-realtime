@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -37,10 +39,13 @@ type Reporter struct {
 	Key     string
 	Client  *http.Client
 	Started time.Time
+	// Stuck is told of a report that failed after the longest wait, once until a report succeeds again.
+	Stuck func(error)
 }
 
-func NewReporter(t *Tracker, url, key string, started time.Time) *Reporter {
-	return &Reporter{Tracker: t, URL: url, Key: key, Client: &http.Client{Timeout: timeout}, Started: started}
+func NewReporter(t *Tracker, url, key string, started time.Time, stuck func(error)) *Reporter {
+	return &Reporter{Tracker: t, URL: url, Key: key, Client: &http.Client{Timeout: timeout}, Started: started,
+		Stuck: stuck}
 }
 
 // Run sends due changes every tick until ctx ends. After a failed report it waits twice as long as before, up to
@@ -48,7 +53,7 @@ func NewReporter(t *Tracker, url, key string, started time.Time) *Reporter {
 func (r *Reporter) Run(ctx context.Context) {
 	ticker := time.NewTicker(Tick)
 	defer ticker.Stop()
-	backoff := time.Duration(0)
+	var b backoff
 	var next time.Time
 	for {
 		select {
@@ -58,12 +63,19 @@ func (r *Reporter) Run(ctx context.Context) {
 			if now.Before(next) {
 				continue
 			}
-			if r.Flush(ctx) == nil {
-				backoff = 0
+			err := r.Flush(ctx)
+			if err == nil {
+				b.succeed()
 				continue
 			}
-			backoff = min(max(2*backoff, Tick), maxBackoff)
-			next = now.Add(backoff)
+			if ctx.Err() != nil {
+				return
+			}
+			wait, stuck := b.fail()
+			if stuck {
+				r.Stuck(err)
+			}
+			next = now.Add(wait)
 		}
 	}
 }
@@ -94,6 +106,11 @@ func (r *Reporter) post(ctx context.Context, changes []Change) error {
 	req.Header.Set("Authorization", "Bearer "+r.Key)
 	req.Header.Set("Content-Type", "application/json")
 	res, err := r.Client.Do(req)
+	// The URL stays out of the error, as it goes to the error tracker.
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return fmt.Errorf("presence: posting the report: %w", urlErr.Err)
+	}
 	if err != nil {
 		return err
 	}

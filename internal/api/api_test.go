@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/config"
+	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 	"github.com/PrototeamHQ/protobase-realtime/internal/hub"
 	"github.com/PrototeamHQ/protobase-realtime/internal/ticket"
 )
@@ -35,7 +36,7 @@ func setup(t *testing.T) (*httptest.Server, *hub.Hub) {
 		{ID: "b", APIKeys: []string{keyB}, Limits: limits},
 	}, nil)
 	mux := http.NewServeMux()
-	Mount(mux, h, time.Now)
+	Mount(mux, h, time.Now, errreport.Off())
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv, h

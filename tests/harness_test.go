@@ -17,6 +17,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/config"
+	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 	"github.com/PrototeamHQ/protobase-realtime/internal/relay"
 )
 
@@ -45,7 +46,7 @@ func startWith(t *testing.T, presence *config.Presence, now func() time.Time) (*
 			Limits: config.Limits{Connections: 50, ChannelsPerTicket: 10, RequestBytes: 4096}})
 	}
 	apps[0].Presence = presence
-	r := relay.New(apps, now)
+	r := relay.New(apps, now, errreport.Off())
 	srv := httptest.NewServer(r.Handler)
 	t.Cleanup(func() {
 		r.Hub.CloseAll()

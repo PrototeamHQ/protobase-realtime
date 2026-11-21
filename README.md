@@ -44,10 +44,11 @@ publishes the result.
 RELAY_APPS_FILE=apps.json RELAY_ADDR=:4000 go run ./cmd/relay
 ```
 
-| Variable          | Meaning                                         |
-| ----------------- | ----------------------------------------------- |
-| `RELAY_APPS_FILE` | The apps file, required.                        |
-| `RELAY_ADDR`      | The listen address; `:4000` when unset.         |
+| Variable           | Meaning                                                                          |
+| ------------------ | -------------------------------------------------------------------------------- |
+| `RELAY_APPS_FILE`  | The apps file, required.                                                         |
+| `RELAY_ADDR`       | The listen address; `:4000` when unset.                                          |
+| `RELAY_SENTRY_DSN` | The DSN of an error tracker that speaks the Sentry protocol; no reporting unset. |
 
 The apps file lists every app the relay serves; the relay reads it at startup and refuses unknown fields.
 
@@ -55,6 +56,30 @@ On `SIGHUP` the relay reads the apps file again and swaps it in whole, without a
 sockets, channels and presence, and take changed keys, origins, client events, presence and limits from the next event
 on; a lower `limits.connections` applies to new sockets only. A removed app's sockets close with 1000. A file that fails
 to load is refused: the relay keeps serving the apps it had and writes the reason to stderr.
+
+### Health
+
+`GET /health` answers `200` while the relay serves, with no auth and nothing about any app, for a container health
+check or an uptime monitor. It checks nothing else. `started` is when the relay started, in milliseconds, so a monitor
+sees a restart:
+
+```json
+{ "ok": true, "started": 1795190000000 }
+```
+
+### Error reporting
+
+With `RELAY_SENTRY_DSN` set, the relay reports its errors to that tracker over the Sentry protocol; a DSN that does not
+parse stops startup. It reports:
+
+- an apps file that fails to load, at startup or on `SIGHUP`;
+- a panic in a socket or an app command, after which that socket or request ends and the relay serves on;
+- an app's presence report that still fails after the relay waited a full minute, once until a report succeeds again.
+
+An event holds the error, its stack, the app id as the `app` tag, the relay's version as the release, and the host and
+Go runtime. It never holds a request, its headers or query string, a user, a ticket, a key or a payload.
+
+<gap>The relay cannot keep serving after a panic in an app's presence reporter because recovering that goroutine is not implemented.</gap>
 
 ```json
 {
@@ -121,7 +146,7 @@ docker run --rm protobase-realtime -version   # 1.2.3
 ```
 
 `examples/apps.json` is a minimal apps file to try it with; replace its keys before serving anyone. The image has no
-shell, so it declares no health check: probe the relay over HTTP from outside.
+shell, so it declares no health check: probe `GET /health` from outside.
 
 <gap>The image cannot be pulled from a registry because publishing it is not implemented.</gap>
 

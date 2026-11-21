@@ -1,5 +1,6 @@
 // Command relay serves the realtime relay. RELAY_APPS_FILE names the apps file, which it reads again on SIGHUP;
-// RELAY_ADDR the listen address. With -version it prints its version and exits.
+// RELAY_ADDR the listen address; RELAY_SENTRY_DSN, when set, the error tracker errors are reported to. With -version
+// it prints its version and exits.
 package main
 
 import (
@@ -13,11 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/PrototeamHQ/protobase-realtime/internal/config"
+	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 	"github.com/PrototeamHQ/protobase-realtime/internal/relay"
 )
 
 const defaultAddr = ":4000"
+
+// flushTimeout bounds the wait for reported errors to be sent as the relay stops.
+const flushTimeout = 5 * time.Second
 
 // version is set at release builds with -ldflags "-X main.version=<version>".
 var version = "dev"
@@ -36,11 +40,16 @@ func main() {
 }
 
 func run() error {
+	errs, err := errreport.New(os.Getenv("RELAY_SENTRY_DSN"), version)
+	if err != nil {
+		return err
+	}
+	defer errs.Flush(flushTimeout)
 	path := os.Getenv("RELAY_APPS_FILE")
 	if path == "" {
 		return errors.New("RELAY_APPS_FILE must name the apps file")
 	}
-	apps, err := config.Load(path)
+	apps, err := load(path, errs)
 	if err != nil {
 		return err
 	}
@@ -48,7 +57,7 @@ func run() error {
 	if addr == "" {
 		addr = defaultAddr
 	}
-	r := relay.New(apps, time.Now)
+	r := relay.New(apps, time.Now, errs)
 	server := &http.Server{Addr: addr, Handler: r.Handler, ReadHeaderTimeout: 10 * time.Second}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -59,7 +68,7 @@ func run() error {
 	r.Start(ctx)
 	served := make(chan error, 1)
 	go func() { served <- server.ListenAndServe() }()
-	if err := serve(ctx, served, hangup, r, path); err != nil {
+	if err := serve(ctx, served, hangup, r, path, errs); err != nil {
 		return err
 	}
 	// Sockets are hijacked connections that Shutdown does not track, so the hub closes them.
@@ -70,7 +79,8 @@ func run() error {
 }
 
 // serve waits until the server fails or ctx ends, reloading the apps file on each hangup.
-func serve(ctx context.Context, served <-chan error, hangup <-chan os.Signal, r *relay.Relay, path string) error {
+func serve(ctx context.Context, served <-chan error, hangup <-chan os.Signal, r *relay.Relay, path string,
+	errs *errreport.Reporter) error {
 	for {
 		select {
 		case err := <-served:
@@ -78,7 +88,7 @@ func serve(ctx context.Context, served <-chan error, hangup <-chan os.Signal, r 
 		case <-ctx.Done():
 			return nil
 		case <-hangup:
-			reload(r, path)
+			reload(r, path, errs)
 		}
 	}
 }

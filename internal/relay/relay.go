@@ -9,6 +9,7 @@ import (
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/api"
 	"github.com/PrototeamHQ/protobase-realtime/internal/config"
+	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 	"github.com/PrototeamHQ/protobase-realtime/internal/hub"
 	"github.com/PrototeamHQ/protobase-realtime/internal/presence"
 	"github.com/PrototeamHQ/protobase-realtime/internal/socket"
@@ -21,6 +22,7 @@ type Relay struct {
 
 	now     func() time.Time
 	started time.Time
+	errs    *errreport.Reporter
 	// mu serializes Start and Reload.
 	mu sync.Mutex
 	// ctx is what Start was given; reporters run until it ends. Nil before Start.
@@ -29,18 +31,20 @@ type Relay struct {
 	reporting map[string]*reporting
 }
 
-func New(apps []config.App, now func() time.Time) *Relay {
-	r := &Relay{now: now, started: now(), reporting: map[string]*reporting{}}
+// New serves apps, reporting errors to errs.
+func New(apps []config.App, now func() time.Time, errs *errreport.Reporter) *Relay {
+	r := &Relay{now: now, started: now(), errs: errs, reporting: map[string]*reporting{}}
 	for _, app := range apps {
 		if app.Presence != nil {
-			r.reporting[app.ID] = newReporting(app, now, r.started)
+			r.reporting[app.ID] = newReporting(app, now, r.started, errs)
 		}
 	}
 	r.Hub = hub.New(apps, r.trackers())
 	mux := http.NewServeMux()
+	mux.Handle("GET "+HealthPath, health(r.started))
 	mux.Handle("GET "+socket.Path, &socket.Handler{Hub: r.Hub, Tickets: ticket.NewVerifier(r.Hub.TicketKeys, now),
-		Now: now})
-	api.Mount(mux, r.Hub, now)
+		Now: now, Errors: errs})
+	api.Mount(mux, r.Hub, now, errs)
 	r.Handler = mux
 	return r
 }
