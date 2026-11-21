@@ -3,7 +3,7 @@ package hub
 import "testing"
 
 func TestJoinOnlyListedChannels(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	c, _ := connect(t, a, "u1", "s1", "room")
 	if err := a.Join(c, "other", nil, nil); err != ErrNotMember {
 		t.Fatalf("got %v", err)
@@ -15,7 +15,7 @@ func TestJoinOnlyListedChannels(t *testing.T) {
 }
 
 func TestAddLetsOpenSocketsJoin(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	c, _ := connect(t, a, "u1", "s1")
 	anon, _ := connect(t, a, "", "anon-1")
 	if n := a.AddToChannel("room", Target{Users: []string{"u1", "nobody"}, Sessions: []string{"anon-1"}}); n != 2 {
@@ -27,7 +27,7 @@ func TestAddLetsOpenSocketsJoin(t *testing.T) {
 }
 
 func TestRemoveClosesTheJoinedChannel(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	c, sink := connect(t, a, "u1", "s1", "room")
 	ref := "7"
 	if err := a.Join(c, "room", &ref, nil); err != nil {

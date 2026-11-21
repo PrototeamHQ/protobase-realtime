@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/hub"
+	"github.com/PrototeamHQ/protobase-realtime/internal/names"
 	"github.com/PrototeamHQ/protobase-realtime/internal/seen"
 )
 
@@ -31,8 +32,8 @@ func (p publishRequest) invalid() string {
 	case p.ID == "" || len(p.ID) > maxIDLen:
 		return "id must be 1 to 128 bytes"
 	case !validChannel(p.Channel):
-		return "channel must be 1 to 256 bytes"
-	case !hub.ValidEvent(p.Event):
+		return channelRule
+	case !names.ValidEvent(p.Event):
 		return "event must be 1 to 64 bytes and not reserved"
 	case !isObject(p.Payload):
 		return "payload must be a JSON object"
@@ -42,7 +43,11 @@ func (p publishRequest) invalid() string {
 	return ""
 }
 
-func validChannel(channel string) bool { return channel != "" && len(channel) <= maxChannelLen }
+const channelRule = "channel must be 1 to 256 bytes, and not relay or phoenix"
+
+func validChannel(channel string) bool {
+	return channel != "" && len(channel) <= maxChannelLen && !names.ReservedTopic(channel)
+}
 
 func isObject(raw json.RawMessage) bool {
 	var m map[string]json.RawMessage

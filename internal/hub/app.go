@@ -55,20 +55,29 @@ type App struct {
 	bySession map[string]set[*Conn]
 	byUser    map[string]set[*Conn]
 	byChannel map[string]set[*Conn]
-	rates     map[string]*rate.Limiter
+	people    map[string]*person
+	presence  Presence
 	// closed remembers sessions the app closed for a ticket's lifetime, so a ticket issued before the close
 	// cannot reopen one.
 	closed *seen.Set
 }
 
-func NewApp(cfg config.App) *App {
+// Presence hears how many of a person's sockets are online and away after each change. The hub calls it under its
+// mutex, so it must not call back into the hub.
+type Presence interface {
+	Change(user string, online, away int)
+}
+
+// NewApp makes an app's hub; presence is nil when the app has no presence reports.
+func NewApp(cfg config.App, presence Presence) *App {
 	return &App{
 		Config:    cfg,
 		conns:     set[*Conn]{},
 		bySession: map[string]set[*Conn]{},
 		byUser:    map[string]set[*Conn]{},
 		byChannel: map[string]set[*Conn]{},
-		rates:     map[string]*rate.Limiter{},
+		people:    map[string]*person{},
+		presence:  presence,
 		closed:    seen.New(ticket.MaxLifetime),
 	}
 }
@@ -95,16 +104,20 @@ func (a *App) Register(t ticket.Ticket, sink Sink, now time.Time) (*Conn, error)
 	}
 	a.conns[c] = struct{}{}
 	add(a.bySession, c.Session, c)
-	if !c.Anonymous {
-		add(a.byUser, c.User, c)
-		if a.rates[c.User] == nil {
-			a.rates[c.User] = newUserRate()
-		}
+	if c.Anonymous {
+		return c, nil
 	}
+	add(a.byUser, c.User, c)
+	if a.people[c.User] == nil {
+		a.people[c.User] = &person{rates: map[string]*rate.Limiter{}}
+	}
+	// The newest ticket carries the app's newest rules for the person.
+	a.people[c.User].rules = newRules(t.Rules)
+	a.reportPresence(c.User)
 	return c, nil
 }
 
-// Unregister drops a closed socket. A person's rate limiter goes with their last socket.
+// Unregister drops a closed socket. A person's rules and rate limiters go with their last socket.
 func (a *App) Unregister(c *Conn) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -124,8 +137,9 @@ func (a *App) Unregister(c *Conn) {
 	}
 	remove(a.byUser, c.User, c)
 	if a.byUser[c.User] == nil {
-		delete(a.rates, c.User)
+		delete(a.people, c.User)
 	}
+	a.reportPresence(c.User)
 }
 
 // Connections reports how many sockets are open.

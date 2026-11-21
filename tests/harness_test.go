@@ -31,19 +31,27 @@ var (
 
 func start(t *testing.T) *httptest.Server {
 	t.Helper()
+	srv, _ := startWith(t, nil, time.Now)
+	return srv
+}
+
+// startWith serves apps a and b, a with presence when it is set, on the given clock.
+func startWith(t *testing.T, presence *config.Presence, now func() time.Time) (*httptest.Server, *relay.Relay) {
+	t.Helper()
 	var apps []config.App
 	for _, a := range []testApp{appA, appB} {
 		apps = append(apps, config.App{ID: a.id, APIKeys: []string{a.apiKey}, TicketKeys: []string{a.ticketKey},
-			Origins: []string{"allowed.example"}, ClientMessages: true,
+			Origins: []string{"allowed.example"}, ClientEvents: &config.ClientEvents{AllowAny: true},
 			Limits: config.Limits{Connections: 50, ChannelsPerTicket: 10, RequestBytes: 4096}})
 	}
-	r := relay.New(apps, time.Now)
+	apps[0].Presence = presence
+	r := relay.New(apps, now)
 	srv := httptest.NewServer(r.Handler)
 	t.Cleanup(func() {
 		r.Hub.CloseAll()
 		srv.Close()
 	})
-	return srv
+	return srv, r
 }
 
 // person is who a ticket names; an empty user is an anonymous session.
@@ -54,6 +62,12 @@ type person struct {
 
 func issue(t *testing.T, app testApp, p person) string {
 	t.Helper()
+	return issueWith(t, app, p, nil)
+}
+
+// issueWith issues a ticket with extra claims, such as rules.
+func issueWith(t *testing.T, app testApp, p person, extra jwt.MapClaims) string {
+	t.Helper()
 	jti := make([]byte, 8)
 	_, _ = rand.Read(jti)
 	claims := jwt.MapClaims{"iss": app.id, "sid": p.session, "jti": hex.EncodeToString(jti),
@@ -62,6 +76,9 @@ func issue(t *testing.T, app testApp, p person) string {
 		claims["anonymous"] = true
 	} else {
 		claims["sub"] = p.user
+	}
+	for name, value := range extra {
+		claims[name] = value
 	}
 	raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(app.ticketKey))
 	if err != nil {

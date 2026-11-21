@@ -20,8 +20,16 @@ const Path = "/socket/websocket"
 // Protocol is the only Phoenix serializer version served.
 const Protocol = "2.0.0"
 
-// readLimit bounds one incoming frame: a member's message with its framing.
-const readLimit = hub.ClientMessageBytes + 1024
+// frameOverhead is what one incoming frame may hold beyond its payload: the framing, and a direct event's recipient.
+const frameOverhead = 2048
+
+// interestBytes is the payload of a full interest list.
+const interestBytes = hub.MaxInterestKeys * (hub.MaxInterestKeyLen + 3)
+
+// readLimit bounds one incoming frame: the largest event the app lets a client send, or a full interest list.
+func readLimit(app *hub.App) int64 {
+	return int64(max(app.MaxEventBytes(), interestBytes) + frameOverhead)
+}
 
 type Handler struct {
 	Hub     *hub.Hub
@@ -64,7 +72,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	ws.SetReadLimit(readLimit)
+	ws.SetReadLimit(readLimit(app))
 	written := make(chan struct{})
 	go func() {
 		out.write(writeCtx, ws)

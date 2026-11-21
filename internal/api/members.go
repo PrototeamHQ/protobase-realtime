@@ -30,7 +30,7 @@ func (h *members) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validChannel(req.Channel) {
-		refuse(w, http.StatusBadRequest, "invalid_request", "channel must be 1 to 256 bytes")
+		refuse(w, http.StatusBadRequest, "invalid_request", channelRule)
 		return
 	}
 	n := h.change(app, req.Channel, hub.Target{Users: req.Users, Sessions: req.Sessions})

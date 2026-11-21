@@ -53,6 +53,7 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	r.Start(ctx)
 	served := make(chan error, 1)
 	go func() { served <- server.ListenAndServe() }()
 	select {

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+
+	"github.com/PrototeamHQ/protobase-realtime/internal/names"
 )
 
 // Limits caps what one app may use of the relay.
@@ -18,12 +20,13 @@ type Limits struct {
 
 // App is one tenant. Any key in a list is valid, so a key rotates without downtime.
 type App struct {
-	ID             string   `json:"id"`
-	APIKeys        []string `json:"api_keys"`
-	TicketKeys     []string `json:"ticket_keys"`
-	Origins        []string `json:"origins"`
-	ClientMessages bool     `json:"client_messages"`
-	Limits         Limits   `json:"limits"`
+	ID           string        `json:"id"`
+	APIKeys      []string      `json:"api_keys"`
+	TicketKeys   []string      `json:"ticket_keys"`
+	Origins      []string      `json:"origins"`
+	ClientEvents *ClientEvents `json:"client_events"`
+	Presence     *Presence     `json:"presence"`
+	Limits       Limits        `json:"limits"`
 }
 
 type File struct {
@@ -53,7 +56,8 @@ func Parse(raw []byte) ([]App, error) {
 		return nil, fmt.Errorf("apps file: lists no apps")
 	}
 	ids := map[string]bool{}
-	for _, app := range file.Apps {
+	for i := range file.Apps {
+		app := &file.Apps[i]
 		if err := validate(app); err != nil {
 			return nil, fmt.Errorf("apps file: app %q: %w", app.ID, err)
 		}
@@ -65,7 +69,7 @@ func Parse(raw []byte) ([]App, error) {
 	return file.Apps, nil
 }
 
-func validate(app App) error {
+func validate(app *App) error {
 	if !appID.MatchString(app.ID) {
 		return fmt.Errorf("id must be 1 to 64 of a-z, 0-9, _ and -")
 	}
@@ -77,6 +81,14 @@ func validate(app App) error {
 	}
 	if app.Limits.Connections <= 0 || app.Limits.ChannelsPerTicket <= 0 || app.Limits.RequestBytes <= 0 {
 		return fmt.Errorf("limits.connections, limits.channels_per_ticket and limits.request_bytes must be positive")
+	}
+	if app.ClientEvents != nil {
+		if err := validateClientEvents(app.ClientEvents, names.ValidEvent); err != nil {
+			return err
+		}
+	}
+	if app.Presence != nil {
+		return validatePresence(app.Presence)
 	}
 	return nil
 }

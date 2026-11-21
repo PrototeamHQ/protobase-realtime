@@ -10,7 +10,7 @@ import (
 var at = time.UnixMilli(1_800_000_000_123)
 
 func TestRelayStampsTheVerifiedSender(t *testing.T) {
-	a := testApp("a", true)
+	a := testApp("a", allowAny)
 	sender, senderSink := connect(t, a, "u1", "s1", "room")
 	sibling, siblingSink := connect(t, a, "u1", "s1", "room")
 	other, otherSink := connect(t, a, "u2", "s2", "room")
@@ -28,7 +28,7 @@ func TestRelayStampsTheVerifiedSender(t *testing.T) {
 	_ = json.Unmarshal([]byte(otherSink.frames[0]), &frame)
 	var env envelope
 	_ = json.Unmarshal(frame[4], &env)
-	if string(frame[3]) != `"client_message"` || env.From.User != "u1" || env.From.Connection != sender.ID ||
+	if string(frame[3]) != `"client_event"` || env.From.User != "u1" || env.From.Connection != sender.ID ||
 		env.Channel != "room" || env.At != at.UnixMilli() || env.Event != "typing" || string(env.Payload) != payload {
 		t.Fatalf("got %s", otherSink.frames[0])
 	}
@@ -38,15 +38,15 @@ func TestRelayStampsTheVerifiedSender(t *testing.T) {
 }
 
 func TestRelayRefuses(t *testing.T) {
-	on := testApp("a", true)
-	off := testApp("b", false)
+	on := testApp("a", allowAny)
+	off := testApp("b", nil)
 	member, _ := connect(t, on, "u1", "s1", "room")
 	join(t, on, member, "room")
 	anon, _ := connect(t, on, "", "anon", "room")
 	join(t, on, anon, "room")
 	offMember, _ := connect(t, off, "u1", "s1", "room")
 	join(t, off, offMember, "room")
-	big := []byte(`{"x":"` + strings.Repeat("a", ClientMessageBytes) + `"}`)
+	big := []byte(`{"x":"` + strings.Repeat("a", AnyEventBytes) + `"}`)
 	cases := []struct {
 		app     *App
 		c       *Conn
@@ -56,10 +56,10 @@ func TestRelayRefuses(t *testing.T) {
 		want    string
 	}{
 		{on, anon, "room", "typing", []byte(`{}`), RefusedReceiveOnly},
-		{off, offMember, "room", "typing", []byte(`{}`), RefusedDisabled},
+		{off, offMember, "room", "typing", []byte(`{}`), RefusedNotAllowed},
 		{on, member, "other", "typing", []byte(`{}`), RefusedNotJoined},
 		{on, member, "room", "phx_join", []byte(`{}`), RefusedEvent},
-		{on, member, "room", "client_message", []byte(`{}`), RefusedEvent},
+		{on, member, "room", "client_event", []byte(`{}`), RefusedEvent},
 		{on, member, "room", "typing", big, RefusedTooLarge},
 	}
 	for _, tc := range cases {
@@ -70,13 +70,13 @@ func TestRelayRefuses(t *testing.T) {
 }
 
 func TestRelayRateIsPerPersonAcrossSockets(t *testing.T) {
-	a := testApp("a", true)
+	a := testApp("a", allowAny)
 	first, _ := connect(t, a, "u1", "s1", "room")
 	second, _ := connect(t, a, "u1", "s2", "room")
 	join(t, a, first, "room")
 	join(t, a, second, "room")
 	sent := 0
-	for i := 0; i < 2*clientBurst; i++ {
+	for i := 0; i < 2*anyBurst; i++ {
 		c := first
 		if i%2 == 1 {
 			c = second
@@ -85,7 +85,7 @@ func TestRelayRateIsPerPersonAcrossSockets(t *testing.T) {
 			sent++
 		}
 	}
-	if sent != clientBurst {
-		t.Fatalf("sent %d, want %d", sent, clientBurst)
+	if sent != anyBurst {
+		t.Fatalf("sent %d, want %d", sent, anyBurst)
 	}
 }

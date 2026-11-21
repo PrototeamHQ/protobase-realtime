@@ -8,7 +8,7 @@ import (
 )
 
 func TestRegisterEnforcesTheConnectionLimit(t *testing.T) {
-	a := NewApp(config.App{ID: "a", Limits: config.Limits{Connections: 1, ChannelsPerTicket: 1, RequestBytes: 1}})
+	a := NewApp(config.App{ID: "a", Limits: config.Limits{Connections: 1, ChannelsPerTicket: 1, RequestBytes: 1}}, nil)
 	c, _ := connect(t, a, "u1", "s1")
 	if _, err := a.Register(ticket.Ticket{User: "u2", Session: "s2"}, &fakeSink{}, now); err != ErrFull {
 		t.Fatalf("got %v", err)
@@ -18,7 +18,7 @@ func TestRegisterEnforcesTheConnectionLimit(t *testing.T) {
 }
 
 func TestRegisterEnforcesTheChannelLimit(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	_, err := a.Register(ticket.Ticket{User: "u", Session: "s", Channels: []string{"1", "2", "3", "4", "5", "6"}}, &fakeSink{}, now)
 	if err != ErrTooManyChannels {
 		t.Fatalf("got %v", err)
@@ -26,7 +26,7 @@ func TestRegisterEnforcesTheChannelLimit(t *testing.T) {
 }
 
 func TestUnregisterDropsEveryIndex(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	c, _ := connect(t, a, "u1", "s1", "room")
 	join(t, a, c, "room")
 	a.Unregister(c)
@@ -34,13 +34,13 @@ func TestUnregisterDropsEveryIndex(t *testing.T) {
 	if a.Join(c, "room", nil, nil) != ErrNotMember {
 		t.Fatal("a closed socket joined")
 	}
-	if a.Connections() != 0 || len(a.byChannel) != 0 || len(a.byUser) != 0 || len(a.bySession) != 0 || len(a.rates) != 0 {
+	if a.Connections() != 0 || len(a.byChannel) != 0 || len(a.byUser) != 0 || len(a.bySession) != 0 || len(a.people) != 0 {
 		t.Fatalf("left %+v", a)
 	}
 }
 
 func TestAppsWithEqualChannelNamesStayApart(t *testing.T) {
-	h := New([]config.App{testApp("a", false).Config, testApp("b", false).Config})
+	h := New([]config.App{testApp("a", nil).Config, testApp("b", nil).Config}, nil)
 	a, _ := h.App("a")
 	b, _ := h.App("b")
 	ca, sinkA := connect(t, a, "u1", "s1", "room")
@@ -58,7 +58,7 @@ func TestAppsWithEqualChannelNamesStayApart(t *testing.T) {
 }
 
 func TestCloseAllRestartsEverySocket(t *testing.T) {
-	h := New([]config.App{testApp("a", false).Config, testApp("b", false).Config})
+	h := New([]config.App{testApp("a", nil).Config, testApp("b", nil).Config}, nil)
 	a, _ := h.App("a")
 	b, _ := h.App("b")
 	_, sa := connect(t, a, "u1", "s1")

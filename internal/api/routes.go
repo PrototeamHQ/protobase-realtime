@@ -14,6 +14,7 @@ const (
 	AddToChannelPath      = "/apps/{app}/channels/add"
 	RemoveFromChannelPath = "/apps/{app}/channels/remove"
 	CloseSessionPath      = "/apps/{app}/sessions/close"
+	RulesPath             = "/apps/{app}/people/rules"
 )
 
 // Mount adds the app commands to a mux.
@@ -22,4 +23,5 @@ func Mount(mux *http.ServeMux, h *hub.Hub, now func() time.Time) {
 	mux.Handle("POST "+AddToChannelPath, &members{hub: h, change: (*hub.App).AddToChannel})
 	mux.Handle("POST "+RemoveFromChannelPath, &members{hub: h, change: (*hub.App).RemoveFromChannel})
 	mux.Handle("POST "+CloseSessionPath, &closeSession{hub: h, now: now})
+	mux.Handle("POST "+RulesPath, &rules{hub: h})
 }

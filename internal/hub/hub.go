@@ -7,10 +7,11 @@ type Hub struct {
 	apps map[string]*App
 }
 
-func New(apps []config.App) *Hub {
+// New makes every app's hub. presence holds the presence of the apps that report it, by app id.
+func New(apps []config.App, presence map[string]Presence) *Hub {
 	h := &Hub{apps: map[string]*App{}}
 	for _, cfg := range apps {
-		h.apps[cfg.ID] = NewApp(cfg)
+		h.apps[cfg.ID] = NewApp(cfg, presence[cfg.ID])
 	}
 	return h
 }

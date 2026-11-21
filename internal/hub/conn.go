@@ -12,6 +12,8 @@ type Conn struct {
 	// Guarded by the app's mutex.
 	allowed set[string]
 	joined  map[string]*joined
+	// away is set while the client says it is suspended.
+	away bool
 }
 
 type joined struct {

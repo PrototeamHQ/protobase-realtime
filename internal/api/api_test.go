@@ -33,7 +33,7 @@ func setup(t *testing.T) (*httptest.Server, *hub.Hub) {
 	h := hub.New([]config.App{
 		{ID: "a", APIKeys: []string{"old-key-for-a-0123456789abcdefgh", keyA}, Limits: limits},
 		{ID: "b", APIKeys: []string{keyB}, Limits: limits},
-	})
+	}, nil)
 	mux := http.NewServeMux()
 	Mount(mux, h, time.Now)
 	srv := httptest.NewServer(mux)
@@ -76,6 +76,7 @@ func TestCommandsRequireTheAppsOwnKey(t *testing.T) {
 	for _, tc := range []struct{ path, key string }{
 		{"/apps/a/publish", keyB}, {"/apps/a/publish", ""}, {"/apps/z/publish", keyA},
 		{"/apps/a/channels/add", keyB}, {"/apps/a/channels/remove", keyB}, {"/apps/a/sessions/close", keyB},
+		{"/apps/a/people/rules", keyB},
 	} {
 		if status, _ := post(t, srv, tc.path, tc.key, `{}`); status != http.StatusUnauthorized {
 			t.Errorf("%s with %q: %d", tc.path, tc.key, status)
@@ -113,7 +114,8 @@ func TestPublishRefusesInvalidRequests(t *testing.T) {
 		`{"channel":"room","event":"new","payload":{}}`:                                                400,
 		`{"id":"m","event":"new","payload":{}}`:                                                        400,
 		`{"id":"m","channel":"room","event":"phx_close","payload":{}}`:                                 400,
-		`{"id":"m","channel":"room","event":"client_message","payload":{}}`:                            400,
+		`{"id":"m","channel":"room","event":"client_event","payload":{}}`:                              400,
+		`{"id":"m","channel":"relay","event":"new","payload":{}}`:                                      400,
 		`{"id":"m","channel":"room","event":"new","payload":[1]}`:                                      400,
 		`{"id":"m","channel":"room","event":"new","payload":{},"from":"x"}`:                            400,
 		`{"id":"m","channel":"room","event":"new","payload":{"x":"` + strings.Repeat("a", 600) + `"}}`: 413,
@@ -156,5 +158,19 @@ func TestCloseSession(t *testing.T) {
 	}
 	if status, _ := post(t, srv, "/apps/a/sessions/close", keyA, `{}`); status != 400 {
 		t.Fatalf("no session: %d", status)
+	}
+}
+
+func TestRulesReplaceThePersonsRules(t *testing.T) {
+	srv, h := setup(t)
+	joined(t, h, "u1", "s1", "room")
+	if _, out := post(t, srv, "/apps/a/people/rules", keyA, `{"user":"u1","blocked":["u2"]}`); out != `{"sockets":1}` {
+		t.Fatalf("got %s", out)
+	}
+	if _, out := post(t, srv, "/apps/a/people/rules", keyA, `{"user":"gone","friends_only":true}`); out != `{"sockets":0}` {
+		t.Fatalf("got %s", out)
+	}
+	if status, _ := post(t, srv, "/apps/a/people/rules", keyA, `{"blocked":["u2"]}`); status != 400 {
+		t.Fatalf("no user: %d", status)
 	}
 }

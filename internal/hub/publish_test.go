@@ -8,7 +8,7 @@ import (
 )
 
 func TestPublishReachesJoinedMembersOnly(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	member, memberSink := connect(t, a, "u1", "s1", "room")
 	_, unjoinedSink := connect(t, a, "u2", "s2", "room")
 	outsider, outsiderSink := connect(t, a, "u3", "s3", "other")
@@ -26,13 +26,13 @@ func TestPublishReachesJoinedMembersOnly(t *testing.T) {
 }
 
 func TestPublishToNobodyConnectedReachesNobody(t *testing.T) {
-	if n := testApp("a", false).Publish(Publish{Channel: "room", Event: "new"}); n != 0 {
+	if n := testApp("a", nil).Publish(Publish{Channel: "room", Event: "new"}); n != 0 {
 		t.Fatalf("reached %d", n)
 	}
 }
 
 func TestPublishNarrowsToUsers(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	c1, s1 := connect(t, a, "u1", "s1", "room")
 	c2, s2 := connect(t, a, "u2", "s2", "room")
 	join(t, a, c1, "room")
@@ -44,7 +44,7 @@ func TestPublishNarrowsToUsers(t *testing.T) {
 }
 
 func TestInterestFiltersButNeverGrants(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	viewer, viewerSink := connect(t, a, "u1", "s1", "room")
 	elsewhere, elsewhereSink := connect(t, a, "u2", "s2", "room")
 	silent, silentSink := connect(t, a, "u3", "s3", "room")
@@ -71,7 +71,7 @@ func TestInterestFiltersButNeverGrants(t *testing.T) {
 }
 
 func TestCloseSessionClosesOnlyThatSession(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	_, phone := connect(t, a, "u1", "s1")
 	_, laptop := connect(t, a, "u1", "s1")
 	_, other := connect(t, a, "u1", "s2")
@@ -87,7 +87,7 @@ func TestCloseSessionClosesOnlyThatSession(t *testing.T) {
 }
 
 func TestAClosedSessionCannotReopenWithinATicketsLifetime(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	a.CloseSession("s1", now)
 	if _, err := a.Register(ticket.Ticket{User: "u1", Session: "s1"}, &fakeSink{}, now.Add(time.Minute)); err != ErrSessionClosed {
 		t.Fatalf("got %v", err)
@@ -98,7 +98,7 @@ func TestAClosedSessionCannotReopenWithinATicketsLifetime(t *testing.T) {
 }
 
 func TestASocketRegisteringWhileItsSessionClosesIsRefused(t *testing.T) {
-	a := testApp("a", false)
+	a := testApp("a", nil)
 	// Hold the app's mutex so Register waits for it, then close the session in that gap as CloseSession does.
 	a.mu.Lock()
 	result := make(chan error)

@@ -17,15 +17,24 @@ publishes the result.
   no token refresh, and the relay keeps no expiry timers. A socket ends when the client leaves or the app closes it.
 - **App commands.** Publish one message to a channel's members (optionally narrowed to some people), add or remove
   people in channels, close the sockets of a sign-in session. All are idempotent, so the app can retry.
-- **Stamped messages.** A member's message is delivered with the sender, channel and server time the relay verified;
-  whatever the payload claims is carried untouched and never trusted.
+- **Declared client events.** Typing, call signalling and the like go from person to person without the app: the app
+  declares which events clients may send, each with a JSON schema, a size cap and a rate, and the relay refuses
+  anything else. An app may let every event through instead, which is not recommended.
+- **Channel and direct events.** An event goes to a channel the sender joined, reaching the members joined to it, or
+  directly to one person the sender shares a channel with, reaching each of their devices.
+- **Delivery rules.** The app supplies each person's block list and whether they take direct events from friends
+  only; the relay drops what the rules refuse without telling the sender.
+- **Stamped events.** A client event is delivered with the sender, channel or recipient, and server time the relay
+  verified; whatever the payload claims is carried untouched and never trusted.
 - **Receive-only anonymous sessions.** An anonymous session receives but never sends.
 - **Interest.** A client may say what it views in a channel; that only narrows delivery, never grants anything.
-- **Nothing kept.** No history, no replay, no database, no app logic, no timers or retries on the app's behalf.
+- **Presence.** The relay tells the app when a person comes online, goes away or goes offline, combined over their
+  devices, debounced, batched and at least once. It reports facts and rebroadcasts nothing: who hears of them is the
+  app's to decide.
+- **Nothing kept.** No history, no replay, no database, no app logic. The only timers and retries the relay runs are
+  those of presence reports.
 
 <gap>The relay cannot run as several instances sharing connections because clustering is not implemented.</gap>
-<gap>Clients cannot send app-declared events checked against schemas, rates and block lists because declared events are not implemented.</gap>
-<gap>The relay cannot report presence because presence is not implemented.</gap>
 <gap>The relay cannot drop a half-open connection that never sends again because liveness checks are not implemented.</gap>
 <gap>The relay cannot report per-app message counts because metrics are not implemented.</gap>
 
@@ -50,7 +59,15 @@ The apps file lists every app the relay serves; the relay reads it at startup an
       "api_keys": ["at least 32 characters, any one is valid"],
       "ticket_keys": ["at least 32 characters, any one is valid"],
       "origins": ["chat.example.com"],
-      "client_messages": false,
+      "client_events": {
+        "events": {
+          "typing": {
+            "schema": { "type": "object", "properties": { "thread": { "type": "string" } }, "required": ["thread"] },
+            "max_bytes": 256, "per_second": 2, "burst": 4
+          }
+        }
+      },
+      "presence": { "url": "https://chat.example.com/relay/presence", "key": "at least 32 characters", "grace_seconds": 30 },
       "limits": { "connections": 10000, "channels_per_ticket": 200, "request_bytes": 65536 }
     }
   ]
@@ -61,7 +78,15 @@ The apps file lists every app the relay serves; the relay reads it at startup an
 - `api_keys`, `ticket_keys`: lists, so a key rotates without downtime: add the new key, move the app over, drop the old.
 - `origins`: the browser origins allowed to connect, as host patterns (`*.example.com`) or `scheme://host`. The relay's
   own host is always allowed, and clients that send no `Origin`, such as native apps, are not checked.
-- `client_messages`: whether signed-in members may send messages to each other (see below). Off unless set.
+- `client_events` (optional): the events signed-in clients may send each other (see below); without it, clients send
+  nothing.
+  - `events`: by event name, the event's `schema` (a JSON schema, draft 2020-12 unless it names another; it may not
+    load other documents), `max_bytes` (the payload's size, at most 65536), and `per_second` and `burst` (how often
+    one person may send it, over all their sockets).
+  - `allow_any`: also let through every other valid event name, with a 4096-byte cap and 10 a second (bursts of 20)
+    per person over all undeclared events. Not recommended: the app then vouches for nothing its clients send.
+- `presence` (optional): turns on presence reports (see below). `url` receives them, with `key` as the bearer token;
+  `grace_seconds` (0 to 3600) is how long a person who closed their last socket still counts as present.
 - `limits.connections`: open sockets for the app; `channels_per_ticket`: channels one ticket may list;
   `request_bytes`: the largest app command body.
 
@@ -101,6 +126,12 @@ A ticket is a JWT signed with HS256 by one of the app's ticket keys; any stock J
 | `jti`       | A random id. Each ticket connects once.                                       |
 | `exp`       | Expiry, at most 120 seconds ahead.                                            |
 | `channels`  | The channels the person belongs to.                                           |
+| `blocked`   | Optional: people whose events never reach this person, at most 1000.          |
+| `friends_only` | Optional: `true` when this person takes direct events from `friends` only. |
+| `friends`   | Optional: the people whose direct events reach a `friends_only` person, at most 1000. |
+
+The ticket travels in the socket URL, which proxies cap in length: for long `blocked` or `friends` lists, send them
+with `people/rules` once the person is connected.
 
 Every connection, reconnects included, needs a fresh ticket. The Phoenix client's `params` may be a function, called on
 each connect: keep a fresh ticket from the app ready for it.
@@ -124,7 +155,8 @@ Sends `[null, null, channel, event, payload]`, the same bytes to every socket jo
   `{"sockets": 0, "duplicate": true}`.
 - `users` (optional): only these people's sockets. A direct message goes to a channel every ticket lists, narrowed to
   the recipient.
-- `event`: 1 to 64 bytes, not `heartbeat`, `interest`, `client_message` or `phx_*`.
+- `channel`: 1 to 256 bytes, not `relay` or `phoenix`, the relay's and the protocol's own topics.
+- `event`: 1 to 64 bytes, not `heartbeat`, `interest`, `presence`, `client_event` or `phx_*`.
 - `payload`: a JSON object.
 - `about` (optional): only sockets that declared no interest, or declared this key.
 
@@ -147,6 +179,34 @@ Closes every socket of the sign-in session with close code `1000`, which Phoenix
 tickets for the session for 120 seconds, so one issued before the close cannot reopen it. The person's other sessions
 stay open.
 
+### `POST /apps/{app}/people/rules`
+
+```json
+{ "user": "u1", "blocked": ["u7"], "friends_only": true, "friends": ["u2", "u3"] }
+```
+
+Replaces the delivery rules of the person's open sockets, as the ticket's claims of the same names set them. Tickets
+issued later carry the app's own rules. Lists hold at most 1000 people.
+
+## Presence reports
+
+With `presence` set, the relay posts to its `url`, with `Authorization: Bearer <key>`:
+
+```json
+{ "started": 1795190000000, "changes": [{ "user": "u1", "status": "away", "at": 1795200000000 }] }
+```
+
+- A person is `online` while one of their sockets is, `away` while every socket said it is away, and `offline` once
+  they had no socket for `grace_seconds`; `at` is when the status began (milliseconds). A phone that drops and
+  reconnects within the grace is never reported offline.
+- A status is reported once it held for 2 seconds, so a quick flap is not reported at all, and only when it differs
+  from what the app last accepted. Changes are batched, at most 500 to a request.
+- A report is sent until the app answers `2xx`, at least once: after a failure the relay waits twice as long as before,
+  up to a minute, before it tries again. Each change carries its own `at`, so a repeat is harmless.
+- `started` is when the relay started. When it changes, the relay restarted and lost what it knew: people it has not
+  reported since are offline.
+- Anonymous sessions have no presence.
+
 ## Client protocol
 
 Connect to `wss://<relay>/socket/websocket?vsn=2.0.0&ticket=<ticket>`; with phoenix.js:
@@ -163,31 +223,43 @@ Frames are Phoenix V2 JSON text frames, `[join_ref, ref, topic, event, payload]`
 | `phx_join` on a channel              | `ok` when the channel is in the person's list, else `error` `unauthorized`. An optional `{"viewing": [...]}` declares interest. |
 | `phx_leave`                          | `ok`.                                                                         |
 | `interest` `{"viewing": [...]}`      | `ok`; replaces what the socket views in that channel (at most 32 keys of 128 bytes). |
-| any other event on a joined channel  | A member's message, below.                                                    |
+| any other event on a joined channel  | A channel event, below.                                                       |
+| `phx_join` on `relay`                | `ok` for a signed-in person, else `error` `receive_only`. The relay topic carries direct events and presence. |
+| `presence` `{"status": "away"}` on `relay` | `ok`; `away` before the client is suspended, `online` when it is back.    |
+| any other event on `relay`, `{"to": "u2", "payload": {...}}` | A direct event, below.                            |
 | anything on a channel not joined     | `error` `unmatched topic`.                                                    |
 
 The relay closes a socket with `1001` when it shuts down and `1013` when the socket falls too far behind; Phoenix
 clients reconnect after both.
 
-### Members' messages
+### Client events
 
-With the app's `client_messages` on, a signed-in member's message on a joined channel reaches the channel's other
-sockets, the sender's other devices included, but not the sending socket. It arrives as:
+A signed-in person's channel event on a joined channel reaches the channel's other joined sockets, the sender's other
+devices included, but not the sending socket. A direct event on the relay topic reaches every socket of the person
+named in `to` that joined the relay topic, when the sender shares a channel with them. Both arrive as:
 
 ```json
-[null, null, "room:1", "client_message", { "from": { "user": "u1", "connection": "Zk3..." }, "channel": "room:1", "at": 1795200000000, "event": "typing", "payload": { "...": "as sent" } }]
+[null, null, "room:1", "client_event", { "from": { "user": "u1", "connection": "Zk3..." }, "channel": "room:1", "at": 1795200000000, "event": "typing", "payload": { "...": "as sent" } }]
+[null, null, "relay", "client_event", { "from": { "user": "u1", "connection": "Zk3..." }, "to": "u2", "at": 1795200000000, "event": "ring", "payload": { "...": "as sent" } }]
 ```
 
-`from.user`, `channel` and `at` (milliseconds) are set by the relay; `from.connection` is an id the relay minted for
-the sending socket, never the sign-in session. A refusal is an `error` reply with one of these reasons:
+`from.user`, `channel`, `to` and `at` (milliseconds) are set by the relay; `from.connection` is an id the relay minted
+for the sending socket, never the sign-in session. Nobody whose `blocked` list names the sender gets their events,
+and a `friends_only` person gets direct events from `friends` only; the sender is not told. A refusal is an `error`
+reply with one of these reasons, and a refused event reaches nobody:
 
-| Reason                     | When                                                       |
-| -------------------------- | ---------------------------------------------------------- |
-| `receive_only`             | The session is anonymous.                                  |
-| `client_messages_disabled` | The app has not turned members' messages on.               |
-| `invalid_event`            | The event is reserved or longer than 64 bytes.             |
-| `too_large`                | The payload is over 4096 bytes.                            |
-| `rate_limited`             | The person sent over 10 a second (bursts of 20), counted over all their sockets. |
+| Reason              | When                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `receive_only`      | The session is anonymous.                                                          |
+| `invalid_event`     | The event is reserved or longer than 64 bytes.                                     |
+| `event_not_allowed` | The app did not declare the event, and does not allow any.                         |
+| `too_large`         | The payload is over the event's `max_bytes`.                                       |
+| `rate_limited`      | The person sent the event more often than its rate, counted over all their sockets. |
+| `invalid_payload`   | The payload does not match the event's schema.                                     |
+| `invalid_direct`    | A direct event is not `{"to": "<person>", "payload": {...}}`.                      |
+| `unreachable`       | The sender shares no channel with the person, or the person has no socket open.    |
+
+An event that fails its schema still counts against the rate, so a flood of invalid events stays cheap.
 
 ## Development
 

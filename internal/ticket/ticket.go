@@ -2,7 +2,9 @@
 //
 // A ticket is a JWT signed with HS256 by one of the app's ticket keys. Claims: iss (the app id), sub (the person,
 // absent for an anonymous session), anonymous (true for an anonymous session), sid (the sign-in session), jti (a
-// random id, used once), exp (at most MaxLifetime ahead) and channels (the channels the person belongs to).
+// random id, used once), exp (at most MaxLifetime ahead), channels (the channels the person belongs to), and the
+// person's delivery rules: blocked (people whose events never reach them), friends_only and friends (when
+// friends_only is set, only friends' direct events reach them).
 package ticket
 
 import (
@@ -21,9 +23,12 @@ var ErrInvalid = errors.New("invalid ticket")
 
 type claims struct {
 	jwt.RegisteredClaims
-	Session   string   `json:"sid"`
-	Channels  []string `json:"channels"`
-	Anonymous bool     `json:"anonymous"`
+	Session     string   `json:"sid"`
+	Channels    []string `json:"channels"`
+	Anonymous   bool     `json:"anonymous"`
+	Blocked     []string `json:"blocked"`
+	FriendsOnly bool     `json:"friends_only"`
+	Friends     []string `json:"friends"`
 }
 
 // Ticket is what a verified ticket grants. User is empty for an anonymous session.
@@ -33,6 +38,22 @@ type Ticket struct {
 	Anonymous bool
 	Session   string
 	Channels  []string
+	Rules     Rules
+}
+
+// Rules filter which client events reach a person.
+type Rules struct {
+	Blocked     []string
+	FriendsOnly bool
+	Friends     []string
+}
+
+// MaxRuleList caps the people one rules list may name.
+const MaxRuleList = 1000
+
+// Valid bounds the lists.
+func (r Rules) Valid() bool {
+	return len(r.Blocked) <= MaxRuleList && len(r.Friends) <= MaxRuleList
 }
 
 // Keys returns the ticket keys of an app, or false for an unknown app.
@@ -64,7 +85,8 @@ func (v *Verifier) Verify(raw string) (Ticket, error) {
 	if !v.used.First(c.Issuer+"\x00"+c.ID, v.now()) {
 		return Ticket{}, ErrInvalid
 	}
-	return Ticket{App: c.Issuer, User: c.Subject, Anonymous: c.Anonymous, Session: c.Session, Channels: c.Channels}, nil
+	return Ticket{App: c.Issuer, User: c.Subject, Anonymous: c.Anonymous, Session: c.Session, Channels: c.Channels,
+		Rules: Rules{Blocked: c.Blocked, FriendsOnly: c.FriendsOnly, Friends: c.Friends}}, nil
 }
 
 func (v *Verifier) keyFor(token *jwt.Token) (any, error) {
@@ -83,12 +105,19 @@ func (v *Verifier) keyFor(token *jwt.Token) (any, error) {
 	return set, nil
 }
 
-// wellFormed requires exactly one of a person or the anonymous flag, a session, a ticket id and a short lifetime.
+// wellFormed requires exactly one of a person or the anonymous flag, a session, a ticket id, rules only for a person
+// and within bounds, and a short lifetime.
 func (v *Verifier) wellFormed(c claims) bool {
 	if c.Anonymous == (c.Subject != "") {
 		return false
 	}
 	if c.Session == "" || c.ID == "" {
+		return false
+	}
+	if c.Anonymous && (len(c.Blocked) > 0 || c.FriendsOnly || len(c.Friends) > 0) {
+		return false
+	}
+	if !(Rules{Blocked: c.Blocked, Friends: c.Friends}).Valid() {
 		return false
 	}
 	return c.ExpiresAt.Sub(v.now()) <= MaxLifetime

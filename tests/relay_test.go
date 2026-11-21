@@ -77,7 +77,7 @@ func TestAClaimedSenderIsReplacedByTheVerifiedOne(t *testing.T) {
 		t.Fatalf("sender got %s", got)
 	}
 	got := receiver.read()
-	if !strings.HasPrefix(got, `[null,null,"room","client_message",{"from":{"user":"u1","connection":"`) ||
+	if !strings.HasPrefix(got, `[null,null,"room","client_event",{"from":{"user":"u1","connection":"`) ||
 		!strings.Contains(got, `"channel":"room","at":`) ||
 		!strings.HasSuffix(got, `"event":"typing","payload":{"from":{"user":"u2"},"channel":"other"}}]`) {
 		t.Fatalf("receiver got %s", got)

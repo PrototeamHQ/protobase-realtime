@@ -50,6 +50,20 @@ func TestVerifyAcceptsAValidTicket(t *testing.T) {
 	}
 }
 
+func TestVerifyReadsTheRules(t *testing.T) {
+	c := base("t1")
+	c["blocked"] = []string{"u2"}
+	c["friends_only"] = true
+	c["friends"] = []string{"u3", "u4"}
+	got, err := verifier().Verify(sign(t, keyA, c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Rules.Blocked) != 1 || !got.Rules.FriendsOnly || len(got.Rules.Friends) != 2 {
+		t.Fatalf("got %+v", got.Rules)
+	}
+}
+
 func TestVerifyAcceptsAnAnonymousTicket(t *testing.T) {
 	c := base("t1")
 	delete(c, "sub")
@@ -98,6 +112,16 @@ func TestVerifyRefuses(t *testing.T) {
 		"no person":      func(c jwt.MapClaims) (string, jwt.MapClaims) { delete(c, "sub"); return keyA, c },
 		"person and anonymous": func(c jwt.MapClaims) (string, jwt.MapClaims) {
 			c["anonymous"] = true
+			return keyA, c
+		},
+		"anonymous with rules": func(c jwt.MapClaims) (string, jwt.MapClaims) {
+			delete(c, "sub")
+			c["anonymous"] = true
+			c["blocked"] = []string{"u2"}
+			return keyA, c
+		},
+		"too many blocked": func(c jwt.MapClaims) (string, jwt.MapClaims) {
+			c["blocked"] = make([]string, MaxRuleList+1)
 			return keyA, c
 		},
 	}
