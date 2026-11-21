@@ -40,7 +40,7 @@ func TestUnregisterDropsEveryIndex(t *testing.T) {
 }
 
 func TestAppsWithEqualChannelNamesStayApart(t *testing.T) {
-	h := New([]config.App{testApp("a", nil).Config, testApp("b", nil).Config}, nil)
+	h := New([]config.App{*testApp("a", nil).Config(), *testApp("b", nil).Config()}, nil)
 	a, _ := h.App("a")
 	b, _ := h.App("b")
 	ca, sinkA := connect(t, a, "u1", "s1", "room")
@@ -58,7 +58,7 @@ func TestAppsWithEqualChannelNamesStayApart(t *testing.T) {
 }
 
 func TestCloseAllRestartsEverySocket(t *testing.T) {
-	h := New([]config.App{testApp("a", nil).Config, testApp("b", nil).Config}, nil)
+	h := New([]config.App{*testApp("a", nil).Config(), *testApp("b", nil).Config()}, nil)
 	a, _ := h.App("a")
 	b, _ := h.App("b")
 	_, sa := connect(t, a, "u1", "s1")

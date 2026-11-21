@@ -30,7 +30,7 @@ func testApp(id string, events *config.ClientEvents) *App {
 func connect(t *testing.T, a *App, user, session string, channels ...string) (*Conn, *fakeSink) {
 	t.Helper()
 	sink := &fakeSink{}
-	c, err := a.Register(ticket.Ticket{App: a.Config.ID, User: user, Anonymous: user == "", Session: session,
+	c, err := a.Register(ticket.Ticket{App: a.Config().ID, User: user, Anonymous: user == "", Session: session,
 		Channels: channels}, sink, now)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +67,7 @@ func declared(t *testing.T) *config.ClientEvents {
 func connectWithRules(t *testing.T, a *App, user string, rules ticket.Rules, channels ...string) (*Conn, *fakeSink) {
 	t.Helper()
 	sink := &fakeSink{}
-	c, err := a.Register(ticket.Ticket{App: a.Config.ID, User: user, Session: user + "-session", Channels: channels,
+	c, err := a.Register(ticket.Ticket{App: a.Config().ID, User: user, Session: user + "-session", Channels: channels,
 		Rules: rules}, sink, now)
 	if err != nil {
 		t.Fatal(err)

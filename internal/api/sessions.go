@@ -23,7 +23,7 @@ func (h *closeSession) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req closeSessionRequest
-	if !decode(w, r, app.Config.Limits.RequestBytes, &req) {
+	if !decode(w, r, app.Config().Limits.RequestBytes, &req) {
 		return
 	}
 	if req.Session == "" {

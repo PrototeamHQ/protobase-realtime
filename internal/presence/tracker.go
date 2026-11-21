@@ -52,6 +52,13 @@ func NewTracker(grace, debounce time.Duration, limit int, now func() time.Time) 
 	return &Tracker{grace: grace, debounce: debounce, limit: limit, now: now, people: map[string]*person{}}
 }
 
+// Configure takes a changed grace period and connection limit, from the next change or report on.
+func (t *Tracker) Configure(grace time.Duration, limit int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.grace, t.limit = grace, limit
+}
+
 // Change records how many of a person's sockets are online and away.
 func (t *Tracker) Change(user string, online, away int) {
 	t.mu.Lock()

@@ -51,6 +51,11 @@ RELAY_APPS_FILE=apps.json RELAY_ADDR=:4000 go run ./cmd/relay
 
 The apps file lists every app the relay serves; the relay reads it at startup and refuses unknown fields.
 
+On `SIGHUP` the relay reads the apps file again and swaps it in whole, without a restart. Apps still listed keep their
+sockets, channels and presence, and take changed keys, origins, client events, presence and limits from the next event
+on; a lower `limits.connections` applies to new sockets only. A removed app's sockets close with 1000. A file that fails
+to load is refused: the relay keeps serving the apps it had and writes the reason to stderr.
+
 ```json
 {
   "apps": [

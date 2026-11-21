@@ -26,7 +26,7 @@ func (h *members) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req membersRequest
-	if !decode(w, r, app.Config.Limits.RequestBytes, &req) {
+	if !decode(w, r, app.Config().Limits.RequestBytes, &req) {
 		return
 	}
 	if !validChannel(req.Channel) {

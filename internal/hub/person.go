@@ -15,12 +15,19 @@ type person struct {
 	rates map[rateKey]*rate.Limiter
 }
 
-// allow takes one send of an event from the person's limiter for it.
+// allow takes one send of an event from the person's limiter for it. A limiter made before a reload changed the
+// event's rate takes the new rate.
 func (p *person) allow(l limits, now time.Time) bool {
-	if p.rates[l.key] == nil {
-		p.rates[l.key] = rate.NewLimiter(rate.Limit(l.perSecond), l.burst)
+	limiter := p.rates[l.key]
+	if limiter == nil {
+		limiter = rate.NewLimiter(rate.Limit(l.perSecond), l.burst)
+		p.rates[l.key] = limiter
 	}
-	return p.rates[l.key].AllowN(now, 1)
+	if limiter.Limit() != rate.Limit(l.perSecond) || limiter.Burst() != l.burst {
+		limiter.SetLimitAt(now, rate.Limit(l.perSecond))
+		limiter.SetBurstAt(now, l.burst)
+	}
+	return limiter.AllowN(now, 1)
 }
 
 // rules filter which client events reach the person: never from someone they blocked, and with friendsOnly set,

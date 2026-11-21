@@ -47,9 +47,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid ticket", http.StatusUnauthorized)
 		return
 	}
+	// A reload may have removed the app since its ticket was verified.
 	app, ok := h.Hub.App(t.App)
 	if !ok {
-		panic("socket: a verified ticket names an unknown app")
+		http.Error(w, "invalid ticket", http.StatusUnauthorized)
+		return
 	}
 	writeCtx, abort := context.WithCancel(context.WithoutCancel(r.Context()))
 	defer abort()
@@ -59,7 +61,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "connection limit reached", http.StatusServiceUnavailable)
 		return
 	}
-	if errors.Is(err, hub.ErrSessionClosed) {
+	if errors.Is(err, hub.ErrSessionClosed) || errors.Is(err, hub.ErrAppRemoved) {
 		http.Error(w, "invalid ticket", http.StatusUnauthorized)
 		return
 	}
@@ -68,11 +70,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer app.Unregister(conn)
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: app.Config.Origins})
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: app.Config().Origins})
 	if err != nil {
 		return
 	}
-	ws.SetReadLimit(readLimit(app))
 	written := make(chan struct{})
 	go func() {
 		out.write(writeCtx, ws)
@@ -86,6 +87,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) read(ctx context.Context, ws *websocket.Conn, s *session) {
 	defer s.out.end(websocket.StatusNormalClosure, "")
 	for {
+		// The limit is set before each frame, so a reload that changes the app's client events applies to it.
+		ws.SetReadLimit(readLimit(s.app))
 		typ, raw, err := ws.Read(ctx)
 		if err != nil {
 			return

@@ -67,14 +67,14 @@ func (h *publish) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req publishRequest
-	if !decode(w, r, app.Config.Limits.RequestBytes, &req) {
+	if !decode(w, r, app.Config().Limits.RequestBytes, &req) {
 		return
 	}
 	if why := req.invalid(); why != "" {
 		refuse(w, http.StatusBadRequest, "invalid_request", why)
 		return
 	}
-	if !h.ids.First(app.Config.ID+"\x00"+req.ID, h.now()) {
+	if !h.ids.First(app.Config().ID+"\x00"+req.ID, h.now()) {
 		respond(w, http.StatusOK, sockets{Duplicate: true})
 		return
 	}

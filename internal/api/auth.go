@@ -20,7 +20,7 @@ func authorize(h *hub.Hub, r *http.Request) (*hub.App, bool) {
 	if !ok {
 		return nil, false
 	}
-	for _, valid := range app.Config.APIKeys {
+	for _, valid := range app.Config().APIKeys {
 		if subtle.ConstantTimeCompare([]byte(key), []byte(valid)) == 1 {
 			return app, true
 		}

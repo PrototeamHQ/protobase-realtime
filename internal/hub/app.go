@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -28,6 +29,7 @@ var (
 	ErrFull            = errors.New("the app has reached its connection limit")
 	ErrTooManyChannels = errors.New("the ticket lists more channels than the app's limit")
 	ErrSessionClosed   = errors.New("the app closed the ticket's session")
+	ErrAppRemoved      = errors.New("the app is no longer served")
 )
 
 type set[T comparable] map[T]struct{}
@@ -48,7 +50,8 @@ func remove[K, T comparable](index map[K]set[T], key K, value T) {
 
 // App is one app's hub. One mutex guards its indexes and the membership state of its connections.
 type App struct {
-	Config config.App
+	// settings are swapped whole when the apps file is reloaded.
+	settings atomic.Pointer[settings]
 
 	mu        sync.Mutex
 	conns     set[*Conn]
@@ -60,6 +63,8 @@ type App struct {
 	// closed remembers sessions the app closed for a ticket's lifetime, so a ticket issued before the close
 	// cannot reopen one.
 	closed *seen.Set
+	// removed is set once a reload dropped the app, so a socket whose ticket was verified before cannot join it.
+	removed bool
 }
 
 // Presence hears how many of a person's sockets are online and away after each change. The hub calls it under its
@@ -70,8 +75,7 @@ type Presence interface {
 
 // NewApp makes an app's hub; presence is nil when the app has no presence reports.
 func NewApp(cfg config.App, presence Presence) *App {
-	return &App{
-		Config:    cfg,
+	a := &App{
 		conns:     set[*Conn]{},
 		bySession: map[string]set[*Conn]{},
 		byUser:    map[string]set[*Conn]{},
@@ -80,21 +84,27 @@ func NewApp(cfg config.App, presence Presence) *App {
 		presence:  presence,
 		closed:    seen.New(ticket.MaxLifetime),
 	}
+	a.settings.Store(newSettings(cfg))
+	return a
 }
 
 // Register adds a socket opened with a verified ticket.
 func (a *App) Register(t ticket.Ticket, sink Sink, now time.Time) (*Conn, error) {
-	if len(t.Channels) > a.Config.Limits.ChannelsPerTicket {
+	limits := a.Config().Limits
+	if len(t.Channels) > limits.ChannelsPerTicket {
 		return nil, ErrTooManyChannels
 	}
 	// The closed set is read under the mutex CloseSession holds while it marks a session, so a socket either
 	// sees the close or is registered before it and gets closed.
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.removed {
+		return nil, ErrAppRemoved
+	}
 	if a.closed.Holds(t.Session, now) {
 		return nil, ErrSessionClosed
 	}
-	if len(a.conns) >= a.Config.Limits.Connections {
+	if len(a.conns) >= limits.Connections {
 		return nil, ErrFull
 	}
 	c := &Conn{ID: newConnID(), User: t.User, Anonymous: t.Anonymous, Session: t.Session, sink: sink,

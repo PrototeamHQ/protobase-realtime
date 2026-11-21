@@ -26,7 +26,7 @@ func (h *rules) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req rulesRequest
-	if !decode(w, r, app.Config.Limits.RequestBytes, &req) {
+	if !decode(w, r, app.Config().Limits.RequestBytes, &req) {
 		return
 	}
 	next := ticket.Rules{Blocked: req.Blocked, FriendsOnly: req.FriendsOnly, Friends: req.Friends}

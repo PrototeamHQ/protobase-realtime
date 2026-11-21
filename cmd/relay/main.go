@@ -1,5 +1,5 @@
-// Command relay serves the realtime relay. RELAY_APPS_FILE names the apps file; RELAY_ADDR the listen address.
-// With -version it prints its version and exits.
+// Command relay serves the realtime relay. RELAY_APPS_FILE names the apps file, which it reads again on SIGHUP;
+// RELAY_ADDR the listen address. With -version it prints its version and exits.
 package main
 
 import (
@@ -53,17 +53,32 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	hangup := make(chan os.Signal, 1)
+	signal.Notify(hangup, syscall.SIGHUP)
+	defer signal.Stop(hangup)
 	r.Start(ctx)
 	served := make(chan error, 1)
 	go func() { served <- server.ListenAndServe() }()
-	select {
-	case err := <-served:
+	if err := serve(ctx, served, hangup, r, path); err != nil {
 		return err
-	case <-ctx.Done():
 	}
 	// Sockets are hijacked connections that Shutdown does not track, so the hub closes them.
 	r.Hub.CloseAll()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+// serve waits until the server fails or ctx ends, reloading the apps file on each hangup.
+func serve(ctx context.Context, served <-chan error, hangup <-chan os.Signal, r *relay.Relay, path string) error {
+	for {
+		select {
+		case err := <-served:
+			return err
+		case <-ctx.Done():
+			return nil
+		case <-hangup:
+			reload(r, path)
+		}
+	}
 }

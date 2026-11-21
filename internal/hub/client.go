@@ -50,26 +50,29 @@ func (l limits) accepts(payload json.RawMessage) bool {
 
 // admitChannel admits an event on a channel against the events declared for the channel's resource.
 func (a *App) admitChannel(c *Conn, channel, event string, payload json.RawMessage) (limits, string) {
+	events := a.Config().ClientEvents
 	var declared *config.Event
-	if a.Config.ClientEvents != nil {
-		declared = a.Config.ClientEvents.OnChannel(channel, event)
+	if events != nil {
+		declared = events.OnChannel(channel, event)
 	}
-	return a.admit(c, rateKey{resource: config.Resource(channel), event: event}, declared, payload)
+	return admit(c, events, rateKey{resource: config.Resource(channel), event: event}, declared, payload)
 }
 
 // admitDirect admits a direct event against the app's direct events.
 func (a *App) admitDirect(c *Conn, event string, payload json.RawMessage) (limits, string) {
+	events := a.Config().ClientEvents
 	var declared *config.Event
-	if a.Config.ClientEvents != nil {
-		declared = a.Config.ClientEvents.Direct(event)
+	if events != nil {
+		declared = events.Direct(event)
 	}
-	return a.admit(c, rateKey{event: event}, declared, payload)
+	return admit(c, events, rateKey{event: event}, declared, payload)
 }
 
 // admit checks what a client event's sender, name and payload size alone decide: it returns the limits the event is
 // held to, or a refusal code. declared is the event's declaration where it is sent, or nil. The schema is checked
 // only once the send is taken from the rate, so a flood of events costs no more than reading them.
-func (a *App) admit(c *Conn, key rateKey, declared *config.Event, payload json.RawMessage) (limits, string) {
+func admit(c *Conn, events *config.ClientEvents, key rateKey, declared *config.Event,
+	payload json.RawMessage) (limits, string) {
 	if c.Anonymous {
 		return limits{}, RefusedReceiveOnly
 	}
@@ -77,7 +80,7 @@ func (a *App) admit(c *Conn, key rateKey, declared *config.Event, payload json.R
 		return limits{}, RefusedEvent
 	}
 	if declared == nil {
-		return a.admitAny(payload)
+		return admitAny(events, payload)
 	}
 	if len(payload) > declared.MaxBytes {
 		return limits{}, RefusedTooLarge
@@ -85,8 +88,8 @@ func (a *App) admit(c *Conn, key rateKey, declared *config.Event, payload json.R
 	return limits{key: key, perSecond: declared.PerSecond, burst: declared.Burst, event: declared}, ""
 }
 
-func (a *App) admitAny(payload json.RawMessage) (limits, string) {
-	if a.Config.ClientEvents == nil || !a.Config.ClientEvents.AllowAny {
+func admitAny(events *config.ClientEvents, payload json.RawMessage) (limits, string) {
+	if events == nil || !events.AllowAny {
 		return limits{}, RefusedNotAllowed
 	}
 	if len(payload) > AnyEventBytes {
@@ -95,16 +98,16 @@ func (a *App) admitAny(payload json.RawMessage) (limits, string) {
 	return limits{perSecond: anyPerSecond, burst: anyBurst}, ""
 }
 
-// MaxEventBytes is the largest payload the app lets a client send, so the socket can bound what it reads.
-func (a *App) MaxEventBytes() int {
+// maxEventBytes is the largest payload the client events let a client send.
+func maxEventBytes(events *config.ClientEvents) int {
 	largest := 0
-	if a.Config.ClientEvents == nil {
+	if events == nil {
 		return largest
 	}
-	if a.Config.ClientEvents.AllowAny {
+	if events.AllowAny {
 		largest = AnyEventBytes
 	}
-	a.Config.ClientEvents.Declared(func(e *config.Event) {
+	events.Declared(func(e *config.Event) {
 		largest = max(largest, e.MaxBytes)
 	})
 	return largest

@@ -4,6 +4,7 @@ package relay
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/api"
@@ -17,33 +18,58 @@ import (
 type Relay struct {
 	Hub     *hub.Hub
 	Handler http.Handler
-	// Reporters post presence for the apps that turned it on; Start starts them.
-	Reporters []*presence.Reporter
+
+	now     func() time.Time
+	started time.Time
+	// mu serializes Start and Reload.
+	mu sync.Mutex
+	// ctx is what Start was given; reporters run until it ends. Nil before Start.
+	ctx context.Context
+	// reporting holds the presence of the apps that turned it on, by app id.
+	reporting map[string]*reporting
 }
 
 func New(apps []config.App, now func() time.Time) *Relay {
-	trackers := map[string]hub.Presence{}
-	var reporters []*presence.Reporter
-	started := now()
+	r := &Relay{now: now, started: now(), reporting: map[string]*reporting{}}
 	for _, app := range apps {
-		if app.Presence == nil {
-			continue
+		if app.Presence != nil {
+			r.reporting[app.ID] = newReporting(app, now, r.started)
 		}
-		t := presence.NewTracker(time.Duration(app.Presence.GraceSeconds)*time.Second, presence.Debounce,
-			app.Limits.Connections, now)
-		trackers[app.ID] = t
-		reporters = append(reporters, presence.NewReporter(t, app.Presence.URL, app.Presence.Key, started))
 	}
-	h := hub.New(apps, trackers)
+	r.Hub = hub.New(apps, r.trackers())
 	mux := http.NewServeMux()
-	mux.Handle("GET "+socket.Path, &socket.Handler{Hub: h, Tickets: ticket.NewVerifier(h.TicketKeys, now), Now: now})
-	api.Mount(mux, h, now)
-	return &Relay{Hub: h, Handler: mux, Reporters: reporters}
+	mux.Handle("GET "+socket.Path, &socket.Handler{Hub: r.Hub, Tickets: ticket.NewVerifier(r.Hub.TicketKeys, now),
+		Now: now})
+	api.Mount(mux, r.Hub, now)
+	r.Handler = mux
+	return r
 }
 
 // Start reports presence in the background until ctx ends.
 func (r *Relay) Start(ctx context.Context) {
-	for _, reporter := range r.Reporters {
-		go reporter.Run(ctx)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ctx = ctx
+	for _, p := range r.reporting {
+		p.run(ctx)
 	}
+}
+
+// Reporter returns the presence reporter of an app, or nil when the app reports no presence.
+func (r *Relay) Reporter(app string) *presence.Reporter {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p := r.reporting[app]
+	if p == nil {
+		return nil
+	}
+	return p.reporter
+}
+
+func (r *Relay) trackers() map[string]hub.Presence {
+	trackers := map[string]hub.Presence{}
+	for id, p := range r.reporting {
+		trackers[id] = p.tracker
+	}
+	return trackers
 }

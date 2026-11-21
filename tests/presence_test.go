@@ -61,7 +61,7 @@ func TestPresenceReachesTheAppCombinedOverDevices(t *testing.T) {
 	report := func() []string {
 		t.Helper()
 		skew.Add(int64(presence.Debounce))
-		if err := r.Reporters[0].Flush(context.Background()); err != nil {
+		if err := r.Reporter(appA.id).Flush(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 		return app.take()

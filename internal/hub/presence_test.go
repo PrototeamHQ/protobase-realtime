@@ -13,7 +13,7 @@ func (p *presenceLog) Change(user string, online, away int) {
 
 func TestPresenceHearsEachPersonsSocketCounts(t *testing.T) {
 	log := &presenceLog{}
-	a := NewApp(testApp("a", nil).Config, log)
+	a := NewApp(*testApp("a", nil).Config(), log)
 	phone, _ := connect(t, a, "u1", "s1")
 	connect(t, a, "u1", "s2")
 	connect(t, a, "", "anon")
