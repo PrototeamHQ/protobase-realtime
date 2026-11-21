@@ -8,10 +8,10 @@ import (
 
 func TestDeclaredEventsAreCheckedAndRefusalsReachNobody(t *testing.T) {
 	a := testApp("a", declared(t))
-	sender, _ := connect(t, a, "u1", "s1", "room")
-	other, otherSink := connect(t, a, "u2", "s2", "room")
-	join(t, a, sender, "room")
-	join(t, a, other, "room")
+	sender, _ := connect(t, a, "u1", "s1", "conversations/1")
+	other, otherSink := connect(t, a, "u2", "s2", "conversations/1")
+	join(t, a, sender, "conversations/1")
+	join(t, a, other, "conversations/1")
 	cases := []struct {
 		event, payload, want string
 	}{
@@ -21,7 +21,7 @@ func TestDeclaredEventsAreCheckedAndRefusalsReachNobody(t *testing.T) {
 		{"offer", `{}`, RefusedNotAllowed},
 	}
 	for _, tc := range cases {
-		if got := a.Relay(sender, "room", tc.event, []byte(tc.payload), at); got != tc.want {
+		if got := a.Relay(sender, "conversations/1", tc.event, []byte(tc.payload), at); got != tc.want {
 			t.Errorf("%s %s: got %q, want %q", tc.event, tc.payload, got, tc.want)
 		}
 	}
@@ -30,21 +30,21 @@ func TestDeclaredEventsAreCheckedAndRefusalsReachNobody(t *testing.T) {
 	}
 	// The refused sends spent the burst, so the valid one waits for the rate to refill.
 	later := at.Add(10 * time.Second)
-	if got := a.Relay(sender, "room", "typing", []byte(`{"thread":"t1"}`), later); got != "" || len(otherSink.frames) != 1 {
+	if got := a.Relay(sender, "conversations/1", "typing", []byte(`{"thread":"t1"}`), later); got != "" || len(otherSink.frames) != 1 {
 		t.Fatalf("a valid event: %q, %d frames", got, len(otherSink.frames))
 	}
 }
 
 func TestDeclaredEventRateIsPerPersonAndRefillsOverTime(t *testing.T) {
 	a := testApp("a", declared(t))
-	sender, _ := connect(t, a, "u1", "s1", "room")
-	other, otherSink := connect(t, a, "u2", "s2", "room")
-	join(t, a, sender, "room")
-	join(t, a, other, "room")
+	sender, _ := connect(t, a, "u1", "s1", "conversations/1")
+	other, otherSink := connect(t, a, "u2", "s2", "conversations/1")
+	join(t, a, sender, "conversations/1")
+	join(t, a, other, "conversations/1")
 	payload := []byte(`{"thread":"t1"}`)
 	got := []string{}
 	for _, when := range []time.Time{at, at, at, at.Add(time.Second)} {
-		got = append(got, a.Relay(sender, "room", "typing", payload, when))
+		got = append(got, a.Relay(sender, "conversations/1", "typing", payload, when))
 	}
 	if strings.Join(got, ",") != ",,"+RefusedRate+"," {
 		t.Fatalf("got %q", got)
@@ -52,7 +52,7 @@ func TestDeclaredEventRateIsPerPersonAndRefillsOverTime(t *testing.T) {
 	if len(otherSink.frames) != 3 {
 		t.Fatalf("delivered %d", len(otherSink.frames))
 	}
-	if a.Relay(other, "room", "typing", payload, at) != "" {
+	if a.Relay(other, "conversations/1", "typing", payload, at) != "" {
 		t.Fatal("one person's sends limited another")
 	}
 }

@@ -28,9 +28,16 @@ const (
 	RefusedRate        = "rate_limited"
 )
 
+// rateKey names the limiter a client event spends from: the channel resource it was declared for ("" for a direct
+// event) and its name. The zero key is the shared limiter of events let through by allow_any.
+type rateKey struct {
+	resource string
+	event    string
+}
+
 // limits are what a client event is held to. event is nil for one let through by allow_any.
 type limits struct {
-	key       string
+	key       rateKey
 	perSecond float64
 	burst     int
 	event     *config.Event
@@ -41,31 +48,41 @@ func (l limits) accepts(payload json.RawMessage) bool {
 	return l.event == nil || l.event.Accepts(payload)
 }
 
+// admitChannel admits an event on a channel against the events declared for the channel's resource.
+func (a *App) admitChannel(c *Conn, channel, event string, payload json.RawMessage) (limits, string) {
+	var declared *config.Event
+	if a.Config.ClientEvents != nil {
+		declared = a.Config.ClientEvents.OnChannel(channel, event)
+	}
+	return a.admit(c, rateKey{resource: config.Resource(channel), event: event}, declared, payload)
+}
+
+// admitDirect admits a direct event against the app's direct events.
+func (a *App) admitDirect(c *Conn, event string, payload json.RawMessage) (limits, string) {
+	var declared *config.Event
+	if a.Config.ClientEvents != nil {
+		declared = a.Config.ClientEvents.Direct(event)
+	}
+	return a.admit(c, rateKey{event: event}, declared, payload)
+}
+
 // admit checks what a client event's sender, name and payload size alone decide: it returns the limits the event is
-// held to, or a refusal code. The schema is checked only once the send is taken from the rate, so a flood of
-// events costs no more than reading them.
-func (a *App) admit(c *Conn, event string, payload json.RawMessage) (limits, string) {
+// held to, or a refusal code. declared is the event's declaration where it is sent, or nil. The schema is checked
+// only once the send is taken from the rate, so a flood of events costs no more than reading them.
+func (a *App) admit(c *Conn, key rateKey, declared *config.Event, payload json.RawMessage) (limits, string) {
 	if c.Anonymous {
 		return limits{}, RefusedReceiveOnly
 	}
-	if !names.ValidEvent(event) {
+	if !names.ValidEvent(key.event) {
 		return limits{}, RefusedEvent
 	}
-	declared := a.declared(event)
 	if declared == nil {
 		return a.admitAny(payload)
 	}
 	if len(payload) > declared.MaxBytes {
 		return limits{}, RefusedTooLarge
 	}
-	return limits{key: event, perSecond: declared.PerSecond, burst: declared.Burst, event: declared}, ""
-}
-
-func (a *App) declared(event string) *config.Event {
-	if a.Config.ClientEvents == nil {
-		return nil
-	}
-	return a.Config.ClientEvents.Events[event]
+	return limits{key: key, perSecond: declared.PerSecond, burst: declared.Burst, event: declared}, ""
 }
 
 func (a *App) admitAny(payload json.RawMessage) (limits, string) {
@@ -75,7 +92,7 @@ func (a *App) admitAny(payload json.RawMessage) (limits, string) {
 	if len(payload) > AnyEventBytes {
 		return limits{}, RefusedTooLarge
 	}
-	return limits{key: anyEvent, perSecond: anyPerSecond, burst: anyBurst}, ""
+	return limits{perSecond: anyPerSecond, burst: anyBurst}, ""
 }
 
 // MaxEventBytes is the largest payload the app lets a client send, so the socket can bound what it reads.
@@ -87,9 +104,9 @@ func (a *App) MaxEventBytes() int {
 	if a.Config.ClientEvents.AllowAny {
 		largest = AnyEventBytes
 	}
-	for _, e := range a.Config.ClientEvents.Events {
+	a.Config.ClientEvents.Declared(func(e *config.Event) {
 		largest = max(largest, e.MaxBytes)
-	}
+	})
 	return largest
 }
 
@@ -134,7 +151,7 @@ func (a *App) spend(c *Conn, topic string, l limits, now time.Time) string {
 // Relay delivers a channel event to the channel's other joined sockets, including the sender's other sockets, but
 // not to people who blocked the sender. It returns a refusal code, or "" once delivered.
 func (a *App) Relay(c *Conn, channel, event string, payload json.RawMessage, now time.Time) string {
-	l, code := a.admit(c, event, payload)
+	l, code := a.admitChannel(c, channel, event, payload)
 	if code != "" {
 		return code
 	}

@@ -109,7 +109,7 @@ func (a *App) Register(t ticket.Ticket, sink Sink, now time.Time) (*Conn, error)
 	}
 	add(a.byUser, c.User, c)
 	if a.people[c.User] == nil {
-		a.people[c.User] = &person{rates: map[string]*rate.Limiter{}}
+		a.people[c.User] = &person{rates: map[rateKey]*rate.Limiter{}}
 	}
 	// The newest ticket carries the app's newest rules for the person.
 	a.people[c.User].rules = newRules(t.Rules)

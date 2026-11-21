@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -11,11 +13,55 @@ import (
 // MaxEventBytes caps any declared event's max_bytes, so one frame stays small.
 const MaxEventBytes = 65536
 
-// ClientEvents lists the events signed-in clients may send each other. An event not listed is refused, unless
-// AllowAny lets every valid event name through with the relay's fixed limits (not recommended).
+// ClientEvents lists the events signed-in clients may send each other: Events on the relay topic, as direct events,
+// and Channels by the resource a channel belongs to. An event not listed is refused, unless AllowAny lets every
+// valid event name through with the relay's fixed limits (not recommended).
 type ClientEvents struct {
-	AllowAny bool              `json:"allow_any"`
-	Events   map[string]*Event `json:"events"`
+	AllowAny bool                      `json:"allow_any"`
+	Events   map[string]*Event         `json:"events"`
+	Channels map[string]*ChannelEvents `json:"channels"`
+}
+
+// ChannelEvents lists the events clients may send on the channels of one resource.
+type ChannelEvents struct {
+	Events map[string]*Event `json:"events"`
+}
+
+// Resource is the part of a channel's name before the first "/", as in "conversations/7", or "" when the name has
+// no "/".
+func Resource(channel string) string {
+	resource, _, found := strings.Cut(channel, "/")
+	if !found {
+		return ""
+	}
+	return resource
+}
+
+// Direct returns the declared direct event of that name, or nil.
+func (ce *ClientEvents) Direct(event string) *Event {
+	return ce.Events[event]
+}
+
+// OnChannel returns the event of that name declared for the channel's resource, or nil. A channel without "/"
+// belongs to no resource, so nothing is declared for it.
+func (ce *ClientEvents) OnChannel(channel, event string) *Event {
+	declared := ce.Channels[Resource(channel)]
+	if declared == nil {
+		return nil
+	}
+	return declared.Events[event]
+}
+
+// Declared calls fn for every declared event, direct and per channel resource.
+func (ce *ClientEvents) Declared(fn func(*Event)) {
+	for _, e := range ce.Events {
+		fn(e)
+	}
+	for _, channel := range ce.Channels {
+		for _, e := range channel.Events {
+			fn(e)
+		}
+	}
 }
 
 // Event is one declared client event: its payload must match Schema (a JSON schema, draft 2020-12 unless it names
@@ -66,15 +112,33 @@ func (e *Event) Accepts(payload []byte) bool {
 }
 
 func validateClientEvents(ce *ClientEvents, validName func(string) bool) error {
-	for name, event := range ce.Events {
+	if err := validateEvents("client_events", ce.Events, validName); err != nil {
+		return err
+	}
+	for resource, channel := range ce.Channels {
+		if resource == "" || strings.Contains(resource, "/") {
+			return fmt.Errorf("client_events: channel resource %q must be non-empty and hold no /", resource)
+		}
+		if channel == nil {
+			return fmt.Errorf("client_events: channel resource %q is empty", resource)
+		}
+		if err := validateEvents("client_events: channel resource "+strconv.Quote(resource), channel.Events, validName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateEvents(where string, events map[string]*Event, validName func(string) bool) error {
+	for name, event := range events {
 		if !validName(name) {
-			return fmt.Errorf("client_events: event %q must be 1 to 64 bytes and not reserved", name)
+			return fmt.Errorf("%s: event %q must be 1 to 64 bytes and not reserved", where, name)
 		}
 		if event == nil {
-			return fmt.Errorf("client_events: event %q is empty", name)
+			return fmt.Errorf("%s: event %q is empty", where, name)
 		}
 		if err := event.Compile(); err != nil {
-			return fmt.Errorf("client_events: event %q: %w", name, err)
+			return fmt.Errorf("%s: event %q: %w", where, name, err)
 		}
 	}
 	return nil

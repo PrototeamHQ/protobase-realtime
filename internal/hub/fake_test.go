@@ -46,15 +46,22 @@ func join(t *testing.T, a *App, c *Conn, channel string) {
 	}
 }
 
-// declared lets clients send only typing, with a schema, a 64-byte cap and a rate of 1 a second in bursts of 2.
-func declared(t *testing.T) *config.ClientEvents {
+// typingEvent is typing with a schema, a 64-byte cap and a rate of 1 a second in bursts of 2.
+func typingEvent(t *testing.T) *config.Event {
 	t.Helper()
 	e := &config.Event{Schema: []byte(`{"type":"object","properties":{"thread":{"type":"string"}},` +
 		`"required":["thread"],"additionalProperties":false}`), MaxBytes: 64, PerSecond: 1, Burst: 2}
 	if err := e.Compile(); err != nil {
 		t.Fatal(err)
 	}
-	return &config.ClientEvents{Events: map[string]*config.Event{"typing": e}}
+	return e
+}
+
+// declared lets clients send only typing, on the channels of the conversations resource.
+func declared(t *testing.T) *config.ClientEvents {
+	t.Helper()
+	return &config.ClientEvents{Channels: map[string]*config.ChannelEvents{
+		"conversations": {Events: map[string]*config.Event{"typing": typingEvent(t)}}}}
 }
 
 func connectWithRules(t *testing.T, a *App, user string, rules ticket.Rules, channels ...string) (*Conn, *fakeSink) {

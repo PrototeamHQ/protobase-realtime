@@ -61,9 +61,16 @@ The apps file lists every app the relay serves; the relay reads it at startup an
       "origins": ["chat.example.com"],
       "client_events": {
         "events": {
-          "typing": {
-            "schema": { "type": "object", "properties": { "thread": { "type": "string" } }, "required": ["thread"] },
-            "max_bytes": 256, "per_second": 2, "burst": 4
+          "ring": { "schema": { "type": "object" }, "max_bytes": 256, "per_second": 1, "burst": 2 }
+        },
+        "channels": {
+          "conversations": {
+            "events": {
+              "typing": {
+                "schema": { "type": "object", "properties": { "thread": { "type": "string" } }, "required": ["thread"] },
+                "max_bytes": 256, "per_second": 2, "burst": 4
+              }
+            }
           }
         }
       },
@@ -80,11 +87,16 @@ The apps file lists every app the relay serves; the relay reads it at startup an
   own host is always allowed, and clients that send no `Origin`, such as native apps, are not checked.
 - `client_events` (optional): the events signed-in clients may send each other (see below); without it, clients send
   nothing.
-  - `events`: by event name, the event's `schema` (a JSON schema, draft 2020-12 unless it names another; it may not
-    load other documents), `max_bytes` (the payload's size, at most 65536), and `per_second` and `burst` (how often
-    one person may send it, over all their sockets).
-  - `allow_any`: also let through every other valid event name, with a 4096-byte cap and 10 a second (bursts of 20)
-    per person over all undeclared events. Not recommended: the app then vouches for nothing its clients send.
+  - `events`: the direct events, sent on the `relay` topic, by event name: the event's `schema` (a JSON schema, draft
+    2020-12 unless it names another; it may not load other documents), `max_bytes` (the payload's size, at most
+    65536), and `per_second` and `burst` (how often one person may send it, over all their sockets).
+  - `channels`: the channel events, by resource: the part of the channel's name before the first `/`, so an event on
+    `conversations/7` is checked against `channels.conversations.events`. Each resource's `events` takes the same
+    fields as above, and a person's rate is counted per resource. An event not declared for the channel's resource is
+    refused, as is every event on a channel whose name holds no `/`.
+  - `allow_any`: also let through every other valid event name, on any channel and as a direct event, with a 4096-byte
+    cap and 10 a second (bursts of 20) per person over all undeclared events. Not recommended: the app then vouches for
+    nothing its clients send.
 - `presence` (optional): turns on presence reports (see below). `url` receives them, with `key` as the bearer token;
   `grace_seconds` (0 to 3600) is how long a person who closed their last socket still counts as present.
 - `limits.connections`: open sockets for the app; `channels_per_ticket`: channels one ticket may list;
@@ -239,7 +251,7 @@ devices included, but not the sending socket. A direct event on the relay topic 
 named in `to` that joined the relay topic, when the sender shares a channel with them. Both arrive as:
 
 ```json
-[null, null, "room:1", "client_event", { "from": { "user": "u1", "connection": "Zk3..." }, "channel": "room:1", "at": 1795200000000, "event": "typing", "payload": { "...": "as sent" } }]
+[null, null, "conversations/7", "client_event", { "from": { "user": "u1", "connection": "Zk3..." }, "channel": "conversations/7", "at": 1795200000000, "event": "typing", "payload": { "...": "as sent" } }]
 [null, null, "relay", "client_event", { "from": { "user": "u1", "connection": "Zk3..." }, "to": "u2", "at": 1795200000000, "event": "ring", "payload": { "...": "as sent" } }]
 ```
 
@@ -252,7 +264,7 @@ reply with one of these reasons, and a refused event reaches nobody:
 | ------------------- | ---------------------------------------------------------------------------------- |
 | `receive_only`      | The session is anonymous.                                                          |
 | `invalid_event`     | The event is reserved or longer than 64 bytes.                                     |
-| `event_not_allowed` | The app did not declare the event, and does not allow any.                         |
+| `event_not_allowed` | The app did not declare the event for the channel's resource, or as a direct event, and does not allow any. |
 | `too_large`         | The payload is over the event's `max_bytes`.                                       |
 | `rate_limited`      | The person sent the event more often than its rate, counted over all their sockets. |
 | `invalid_payload`   | The payload does not match the event's schema.                                     |

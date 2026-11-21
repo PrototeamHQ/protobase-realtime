@@ -12,7 +12,7 @@ import (
 // else it is refused as unreachable, which is also the answer when the person has no socket open. A person who
 // blocked the sender, or takes direct events from friends only, gets nothing, and the sender is not told.
 func (a *App) Direct(c *Conn, to, event string, payload json.RawMessage, now time.Time) string {
-	l, code := a.admit(c, event, payload)
+	l, code := a.admitDirect(c, event, payload)
 	if code != "" {
 		return code
 	}

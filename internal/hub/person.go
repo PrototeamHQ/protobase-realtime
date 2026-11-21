@@ -11,12 +11,9 @@ import (
 // person is what the hub holds for someone signed in while they have a socket open. Guarded by the app's mutex.
 type person struct {
 	rules rules
-	// rates holds one limiter per event the person sent, summed over all their sockets; anyEvent keys the shared
-	// limiter of events let through by allow_any.
-	rates map[string]*rate.Limiter
+	// rates holds one limiter per event the person sent, summed over all their sockets.
+	rates map[rateKey]*rate.Limiter
 }
-
-const anyEvent = ""
 
 // allow takes one send of an event from the person's limiter for it.
 func (p *person) allow(l limits, now time.Time) bool {
