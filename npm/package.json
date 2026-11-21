@@ -1,0 +1,11 @@
+{
+  "name": "protobase-realtime-npm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'realtime/**/*.test.js'"
+  },
+  "dependencies": {
+    "semver": "^7.8.6"
+  }
+}

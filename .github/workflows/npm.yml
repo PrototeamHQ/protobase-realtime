@@ -1,0 +1,119 @@
+# The relay on npm: @protobase/realtime, which resolves the binary for the machine, and one optional package per
+# platform, @protobase/realtime-<os>-<arch>, which npm installs only where its os and cpu match. Each GitHub release
+# publishes them at its tag's version, v1.2.3 as 1.2.3 (a prerelease under the next dist-tag); run by hand with an
+# existing tag, it publishes that tag again, skipping versions npm already has. A pull request that touches the relay's
+# command or the packaging builds and checks the packages without publishing them.
+name: npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing release tag to publish again, e.g. v1.2.3.
+        required: true
+  pull_request:
+    paths:
+      - cmd/relay/**
+      - npm/**
+      - .github/workflows/npm.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    # Our own runners: GitHub-hosted minutes are billed for a private repository. Go cross-compiles every platform here.
+    runs-on: hetzner-vm
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --prefix npm
+      - run: npm test --prefix npm
+      - name: Take the version from the release tag
+        id: version
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -n "$TAG" ]; then
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-pr.$PR" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and pack the packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node npm/pack.mjs "$VERSION" "$RUNNER_TEMP/packages"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: ${{ runner.temp }}/packages
+          if-no-files-found: error
+          retention-days: 1
+
+  # Installs the packages as a user would on each platform and runs the relay npm picked. Our own runners are Linux x64
+  # only, so this takes GitHub's hosted runners.
+  verify:
+    needs: pack
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-2025]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: ${{ runner.temp }}/packages
+      - name: Install the packages and run the relay
+        shell: bash
+        env:
+          VERSION: ${{ needs.pack.outputs.version }}
+        run: npm/verify-install.sh "$RUNNER_TEMP/packages" "$VERSION"
+
+  # Publishes through npm's trusted publishing: npm trusts this workflow for each package and takes the job's OIDC
+  # token in place of a stored npm token. Trusted publishing also attaches provenance, once the repository is public.
+  # npm accepts OIDC tokens from GitHub's hosted runners only.
+  publish:
+    needs: [pack, verify]
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install --global npm@^11.5.1
+      - run: npm ci --prefix npm
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: ${{ runner.temp }}/packages
+      - name: Publish the packages
+        run: node npm/publish.mjs "$RUNNER_TEMP/packages"

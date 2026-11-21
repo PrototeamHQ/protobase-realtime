@@ -1,9 +1,11 @@
 // Command relay serves the realtime relay. RELAY_APPS_FILE names the apps file; RELAY_ADDR the listen address.
+// With -version it prints its version and exits.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,7 +19,16 @@ import (
 
 const defaultAddr = ":4000"
 
+// version is set at release builds with -ldflags "-X main.version=<version>".
+var version = "dev"
+
 func main() {
+	printVersion := flag.Bool("version", false, "print the version and exit")
+	flag.Parse()
+	if *printVersion {
+		fmt.Println(version)
+		return
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "relay:", err)
 		os.Exit(1)
