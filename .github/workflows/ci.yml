@@ -29,3 +29,38 @@ jobs:
           test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
           go vet ./...
           go test ./...
+
+  # Builds the container image and runs it with the example apps file: it must print the version it was built with and
+  # answer HTTP on its socket path. Without a ticket the answer is a refusal, which still proves the relay serves.
+  image:
+    runs-on: hetzner-vm
+    env:
+      IMAGE: protobase-realtime-ci:${{ github.run_id }}-${{ github.run_attempt }}
+      CONTAINER: protobase-realtime-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      VERSION: 0.0.0-ci.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: docker build --build-arg "VERSION=$VERSION" --tag "$IMAGE" .
+      - name: Print the version
+        run: |
+          reported=$(docker run --rm "$IMAGE" -version)
+          if [ "$reported" != "$VERSION" ]; then
+            echo "The image reported version $reported, not $VERSION" >&2
+            exit 1
+          fi
+      - name: Serve with a mounted apps file
+        run: |
+          docker run --detach --name "$CONTAINER" --publish 127.0.0.1::4000 \
+            --volume "$PWD/examples/apps.json:/etc/relay/apps.json:ro" "$IMAGE"
+          port=$(docker port "$CONTAINER" 4000/tcp | head -n 1 | sed 's/.*://')
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' --retry 10 --retry-all-errors \
+            --retry-delay 1 "http://127.0.0.1:$port/socket/websocket?vsn=2.0.0")
+          echo "The relay answered $status"
+      - if: failure()
+        run: docker logs "$CONTAINER"
+      - if: always()
+        run: |
+          docker rm --force "$CONTAINER" || true
+          docker image rm --force "$IMAGE" || true
