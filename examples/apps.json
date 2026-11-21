@@ -1,0 +1,11 @@
+{
+  "apps": [
+    {
+      "id": "example",
+      "api_keys": ["example-api-key-replace-before-use-0001"],
+      "ticket_keys": ["example-ticket-key-replace-before-use-01"],
+      "origins": ["localhost"],
+      "limits": { "connections": 100, "channels_per_ticket": 50, "request_bytes": 65536 }
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+# Only what the build stage copies.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/

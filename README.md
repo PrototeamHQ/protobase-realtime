@@ -104,6 +104,22 @@ The apps file lists every app the relay serves; the relay reads it at startup an
 
 The relay terminates no TLS: run it behind a reverse proxy that does.
 
+### As a container
+
+The `Dockerfile` builds a static relay into a minimal image that runs as a non-root user, carries CA certificates for
+presence reports over https, listens on `:4000` and reads its apps file from `/etc/relay/apps.json`:
+
+```sh
+docker build --build-arg VERSION=1.2.3 -t protobase-realtime .
+docker run -p 4000:4000 -v "$PWD/apps.json:/etc/relay/apps.json:ro" protobase-realtime
+docker run --rm protobase-realtime -version   # 1.2.3
+```
+
+`examples/apps.json` is a minimal apps file to try it with; replace its keys before serving anyone. The image has no
+shell, so it declares no health check: probe the relay over HTTP from outside.
+
+<gap>The image cannot be pulled from a registry because publishing it is not implemented.</gap>
+
 ### From npm
 
 The relay is published prebuilt on npm for macOS (arm64, x64), Linux (arm64, x64) and Windows (x64), so it runs without
