@@ -14,6 +14,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 # A static binary needs no libc; the image carries CA certificates for presence reports over https and runs as a
 # non-root user. It has no shell or HTTP client, so it has no HEALTHCHECK: probe GET /health from outside.
 FROM gcr.io/distroless/static-debian13:nonroot
+LABEL org.opencontainers.image.source=https://github.com/PrototeamHQ/protobase-realtime
 COPY --from=build /out/relay /relay
 ENV RELAY_APPS_FILE=/etc/relay/apps.json
 EXPOSE 4000

@@ -64,6 +64,21 @@ jobs:
           docker rm --force "$CONTAINER" || true
           docker image rm --force "$IMAGE" || true
 
+  # Builds the image for every platform image.yml publishes, as a tag would, pushing nothing.
+  image-platforms:
+    runs-on: hetzner-vm
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=0.0.0-ci.${{ github.run_id }}
+          push: false
+
   # Builds the release assets as a tag would, publishing nothing: every platform's relay must check out against
   # SHA256SUMS, and the Linux x64 relay must print the version it was built with.
   release-build:

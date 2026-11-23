@@ -140,15 +140,17 @@ The `Dockerfile` builds a static relay into a minimal image that runs as a non-r
 presence reports over https, listens on `:4000` and reads its apps file from `/etc/relay/apps.json`:
 
 ```sh
-docker build --build-arg VERSION=1.2.3 -t protobase-realtime .
-docker run -p 4000:4000 -v "$PWD/apps.json:/etc/relay/apps.json:ro" protobase-realtime
-docker run --rm protobase-realtime -version   # 1.2.3
+docker pull ghcr.io/prototeamhq/protobase-realtime:1.2.3
+docker run -p 4000:4000 -v "$PWD/apps.json:/etc/relay/apps.json:ro" ghcr.io/prototeamhq/protobase-realtime:1.2.3
+docker run --rm ghcr.io/prototeamhq/protobase-realtime:1.2.3 -version   # 1.2.3
 ```
+
+Each release publishes the image for linux/amd64 and linux/arm64 under its version without the `v`, a prerelease
+included; no tag is `latest`, so pin a version, or its digest, which the publishing run prints in its summary. To build
+it yourself instead: `docker build --build-arg VERSION=1.2.3 -t protobase-realtime .`
 
 `examples/apps.json` is a minimal apps file to try it with; replace its keys before serving anyone. The image has no
 shell, so it declares no health check: probe `GET /health` from outside.
-
-<gap>The image cannot be pulled from a registry because publishing it is not implemented.</gap>
 
 ### From a release
 
@@ -341,7 +343,14 @@ only the workflow's own token; a tag such as `v1.3.0-rc.1` makes a prerelease. T
 `protobase-relay-<GOOS>-<GOARCH>` (`.exe` on Windows) for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 and
 windows/amd64, plus `SHA256SUMS`, each at
 `https://github.com/PrototeamHQ/protobase-realtime/releases/download/v<version>/<asset>`. Pull requests run the same build and
-check, publishing nothing:
+check, publishing nothing.
+
+The same tag runs `.github/workflows/image.yml`, which pushes the container image
+`ghcr.io/prototeamhq/protobase-realtime:<version>` for linux/amd64 and linux/arm64 with the workflow's own token and
+refuses a version already published. Running it by hand with an existing tag publishes that tag. Pull requests build
+both platforms, pushing nothing.
+
+The release build and check, as pull requests run them:
 
 ```sh
 scripts/build-release.sh 0.0.0-dev /tmp/release && (cd /tmp/release && sha256sum -c SHA256SUMS)
