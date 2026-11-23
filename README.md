@@ -1,10 +1,75 @@
 # Protobase Realtime
 
-A multi-tenant realtime relay. It holds the WebSocket connections of many apps' users, so an app and its database can
-sleep while people stay connected: the app talks to the relay only when something happens, and the relay fans it out.
+A realtime relay for Protobase apps. It keeps many apps' users connected over WebSocket, so a quiet app and its
+database can sleep.
 
-Lasting writes, such as a sent message, never go through the relay: they go through the app's own API, and the app
-publishes the result.
+App to people: the app publishes over HTTP, and the relay pushes to the channel. People to app: lasting writes, like a
+sent message, go through the app's own API; no socket message reaches the app. Between people: fleeting events, like
+typing, pass through the relay, checked against the app's rules and stamped with a verified sender.
+
+## How messages flow
+
+### App to people
+
+The app tells the relay what happened, and the relay pushes it to the sockets of a channel's members. This is for
+anything users should see as it happens. For example, someone posts in a conversation: the app saves the post and
+publishes it to the conversation's channel.
+
+```http
+POST /apps/chat/publish
+Authorization: Bearer <api key>
+
+{ "id": "1", "channel": "room", "event": "new", "payload": { "n": 1 } }
+```
+
+The other app commands narrow a publish to some of the members, add or remove people in channels, and close every
+socket of a sign-in session when someone signs out. All are idempotent, so the app can retry. See [App API](#app-api).
+
+### People to app
+
+Lasting writes go through the app's own API, as they would without the relay: the app checks them, stores them and
+publishes the result. Nothing a client sends over the socket reaches the app, and the relay makes no request to the app
+except [presence reports](#presence). For example, sending a message is a request to the app, which then publishes
+`message_created` to the conversation, the sender's other devices included.
+
+### Between people
+
+Fleeting events the app need not see, such as typing or call signalling, go from person to person through the relay.
+The app declares each event clients may send, with a JSON schema, a size cap and a rate per person, and the relay
+refuses anything else. An app may let every event through instead with `allow_any`, which is not recommended. For
+example, a typing event declared for `conversations/...` channels:
+
+```json
+"typing": {
+  "schema": { "type": "object", "properties": { "thread": { "type": "string" } }, "required": ["thread"] },
+  "max_bytes": 256, "per_second": 2, "burst": 4
+}
+```
+
+- A channel event is sent on a joined channel and reaches the members joined to it, the sender's other devices
+  included.
+- A direct event is sent on the `relay` topic to one person the sender shares a channel with, and reaches each of their
+  devices.
+- The app supplies each person's block list and whether they take direct events from friends only; the relay drops
+  what these rules refuse without telling the sender.
+- The relay stamps each event with the sender, the channel or recipient, and the server time, all verified; whatever
+  the payload claims is carried untouched and never trusted.
+- An anonymous session receives but never sends.
+
+See [Client events](#client-events).
+
+### Presence
+
+Presence is the one thing the relay reports to the app: a person came online, went away or went offline, combined over
+their devices, debounced, batched and sent at least once. A report carries only the person, their status and when it
+began, never anything a client sent. The relay rebroadcasts nothing: who hears of it is the app's to decide. For
+example, once every socket of `u1` said it is away, the app gets:
+
+```json
+{ "started": 1795190000000, "changes": [{ "user": "u1", "status": "away", "at": 1795200000000 }] }
+```
+
+See [Presence reports](#presence-reports).
 
 ## Requirements
 
@@ -15,22 +80,7 @@ publishes the result.
 - **Tickets.** A client connects with a short-lived, single-use ticket the app issues. It names the person or an
   anonymous session, their sign-in session and the channels they belong to. The connection is the session: there is
   no token refresh, and the relay keeps no expiry timers. A socket ends when the client leaves or the app closes it.
-- **App commands.** Publish one message to a channel's members (optionally narrowed to some people), add or remove
-  people in channels, close the sockets of a sign-in session. All are idempotent, so the app can retry.
-- **Declared client events.** Typing, call signalling and the like go from person to person without the app: the app
-  declares which events clients may send, each with a JSON schema, a size cap and a rate, and the relay refuses
-  anything else. An app may let every event through instead, which is not recommended.
-- **Channel and direct events.** An event goes to a channel the sender joined, reaching the members joined to it, or
-  directly to one person the sender shares a channel with, reaching each of their devices.
-- **Delivery rules.** The app supplies each person's block list and whether they take direct events from friends
-  only; the relay drops what the rules refuse without telling the sender.
-- **Stamped events.** A client event is delivered with the sender, channel or recipient, and server time the relay
-  verified; whatever the payload claims is carried untouched and never trusted.
-- **Receive-only anonymous sessions.** An anonymous session receives but never sends.
 - **Interest.** A client may say what it views in a channel; that only narrows delivery, never grants anything.
-- **Presence.** The relay tells the app when a person comes online, goes away or goes offline, combined over their
-  devices, debounced, batched and at least once. It reports facts and rebroadcasts nothing: who hears of them is the
-  app's to decide.
 - **Nothing kept.** No history, no replay, no database, no app logic. The only timers and retries the relay runs are
   those of presence reports.
 
