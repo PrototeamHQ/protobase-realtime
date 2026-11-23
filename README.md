@@ -29,10 +29,10 @@ the app, which then publishes `message_created` to the conversation, the sender'
 
 ### Between people
 
-Fleeting events the app need not see, such as typing or call signalling, go from person to person through the relay.
-The app declares each event clients may send, with a JSON schema, a size cap and a rate per person, and the relay
-refuses anything else. An app may let every event through instead with `allow_any`, which is not recommended. For
-example, a typing event declared for `conversations/...` channels:
+Events that only matter in the moment, such as typing or call signalling, go from person to person through the relay
+without reaching the app. The app declares each event clients may send, with a JSON schema, a size cap and a rate per
+person, and the relay refuses anything else. An app may let every event through instead with `allow_any`, which is not
+recommended. For example, a typing event declared for `conversations/...` channels:
 
 ```json
 "typing": {
