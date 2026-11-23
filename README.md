@@ -6,9 +6,9 @@ Multi-tenant WebSocket relay for Protobase apps: server-to-client push, plus fil
 
 ### App to people
 
-The app tells the relay what happened, and the relay pushes it to the sockets of a channel's members. This is for
-anything users should see as it happens. For example, someone posts in a conversation: the app saves the post and
-publishes it to the conversation's channel.
+When something happens, the app sends it to the relay over HTTP. The relay pushes it to every socket of the channel's
+members. Use this for anything users should see right away. For example, someone posts in a conversation. The app
+saves the post and publishes it to the conversation's channel.
 
 ```http
 POST /apps/chat/publish
@@ -17,22 +17,24 @@ Authorization: Bearer <api key>
 { "id": "1", "channel": "room", "event": "new", "payload": { "n": 1 } }
 ```
 
-The other app commands narrow a publish to some of the members, add or remove people in channels, and close every
-socket of a sign-in session when someone signs out. All are idempotent, so the app can retry. See [App API](#app-api).
+With the other app commands, the app can send to only some of a channel's members, add people to channels or remove
+them, and close every socket of a sign-in session when someone signs out. All commands are idempotent, so the app can
+safely retry them. See [App API](#app-api).
 
 ### People to app
 
-This path is not part of the relay. Lasting writes go through the app's own API, as they would without the relay: the
-app checks them, stores them and publishes the result. Nothing a client sends over the socket reaches the app, and the
-relay makes no request to the app except [presence reports](#presence). For example, sending a message is a request to
-the app, which then publishes `message_created` to the conversation, the sender's other devices included.
+This path is not part of the relay. Anything that should be saved, like a sent message, goes through the app's own
+API, just as it would without the relay. The app checks it, stores it and publishes the result. Nothing a client sends
+over the socket reaches the app. The only requests the relay makes to the app are [presence reports](#presence). For
+example, sending a message is a request to the app. The app then publishes `message_created` to the conversation, and
+the sender's other devices get it too.
 
 ### Between people
 
 Events that only matter in the moment, such as typing or call signalling, go from person to person through the relay
-without reaching the app. The app declares each event clients may send, with a JSON schema, a size cap and a rate per
-person, and the relay refuses anything else. An app may let every event through instead with `allow_any`, which is not
-recommended. For example, a typing event declared for `conversations/...` channels:
+without reaching the app. The app lists the events clients may send. Each event has a JSON schema, a size limit and a
+rate limit per person. The relay rejects anything else. An app can also set `allow_any` to let every event through,
+but we don't recommend it. For example, here is a typing event for `conversations/...` channels:
 
 ```json
 "typing": {
@@ -41,24 +43,25 @@ recommended. For example, a typing event declared for `conversations/...` channe
 }
 ```
 
-- A channel event is sent on a joined channel and reaches the members joined to it, the sender's other devices
-  included.
-- A direct event is sent on the `relay` topic to one person the sender shares a channel with, and reaches each of their
+- A channel event is sent on a joined channel. It reaches everyone joined to that channel, including the sender's other
   devices.
-- The app supplies each person's block list and whether they take direct events from friends only; the relay drops
-  what these rules refuse without telling the sender.
-- The relay stamps each event with the sender, the channel or recipient, and the server time, all verified; whatever
-  the payload claims is carried untouched and never trusted.
-- An anonymous session receives but never sends.
+- A direct event is sent on the `relay` topic to one person who shares a channel with the sender. It reaches all of
+  that person's devices.
+- The app gives the relay each person's block list, and whether they only take direct events from friends. The relay
+  drops events these rules don't allow, and the sender is not told.
+- The relay adds the sender, the channel or recipient, and the server time to each event. It checks these itself.
+  Anything the payload claims is passed on unchanged and never trusted.
+- Anonymous sessions can receive events but not send them.
 
 See [Client events](#client-events).
 
 ### Presence
 
-Presence is the one thing the relay reports to the app: a person came online, went away or went offline, combined over
-their devices, debounced, batched and sent at least once. A report carries only the person, their status and when it
-began, never anything a client sent. The relay rebroadcasts nothing: who hears of it is the app's to decide. For
-example, once every socket of `u1` said it is away, the app gets:
+Presence is the only thing the relay reports to the app. It tells the app when a person comes online, goes away or
+goes offline, combined over all their devices. Reports are debounced, batched and sent at least once. A report holds
+only the person, their status and when it started, never anything a client sent. The relay does not pass presence on
+to other users; the app decides who hears about it. For example, once every socket of `u1` has said it is away, the
+app gets:
 
 ```json
 { "started": 1795190000000, "changes": [{ "user": "u1", "status": "away", "at": 1795200000000 }] }
