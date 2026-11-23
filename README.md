@@ -160,11 +160,12 @@ The relay reads the file at startup. It rejects unknown fields and a file withou
 `{"apps": []}`, is valid: the relay then serves no app, so it can start before the first app exists and keep running
 after the last one is gone.
 
-On `SIGHUP` the relay reads the file again and swaps in the whole new version, without a restart. Apps that are still
-listed keep their sockets, channels and presence, and use changed keys, origins, client events, presence and limits
-from the next event on. A lower `limits.connections` only applies to new sockets. Sockets of a removed app close with
-1000. If the new file fails to load, the relay rejects it, keeps serving the apps it had and writes the reason to
-stderr.
+On `SIGHUP` the relay reads the file again and swaps in the whole new version, without a restart. The relay does not
+watch the file and has no API for configuration, so a changed file takes effect only when the relay gets `SIGHUP`, for
+example with `kill -HUP <pid>`. Apps that are still listed keep their sockets, channels and presence, and use changed
+keys, origins, client events, presence and limits from the next event on. A lower `limits.connections` only applies to
+new sockets. Sockets of a removed app close with 1000. If the new file fails to load, the relay rejects it, keeps
+serving the apps it had and writes the reason to stderr.
 
 ### Health
 
