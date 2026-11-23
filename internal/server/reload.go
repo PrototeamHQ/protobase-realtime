@@ -1,10 +1,10 @@
-package relay
+package server
 
 import "github.com/PrototeamHQ/protobase-realtime/internal/config"
 
 // Reload swaps in a newly loaded apps file. Apps still listed keep their sockets and their presence state; presence
 // that changed takes its new grace, limit, URL and key; a removed app's sockets close and its reporter stops.
-func (r *Relay) Reload(apps []config.App) {
+func (r *Server) Reload(apps []config.App) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	next := map[string]*reporting{}

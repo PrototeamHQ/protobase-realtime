@@ -18,24 +18,24 @@ import (
 )
 
 func TestHangupReloadsTheAppsFileWithoutDroppingSockets(t *testing.T) {
-	relay := startProcess(t, appA)
-	member := connect(t, relay.srv, appA, person{"u1", "s1", []string{"room"}})
+	proc := startProcess(t, appA)
+	member := connect(t, proc.srv, appA, person{"u1", "s1", []string{"room"}})
 	member.join("room")
 
-	relay.reload(appA, appB)
-	waitServed(t, relay.srv, appB)
-	command(t, relay.srv, appA, "/publish", `{"id":"1","channel":"room","event":"new","payload":{}}`)
+	proc.reload(appA, appB)
+	waitServed(t, proc.srv, appB)
+	command(t, proc.srv, appA, "/publish", `{"id":"1","channel":"room","event":"new","payload":{}}`)
 	if got := member.read(); got != `[null,null,"room","new",{}]` {
 		t.Fatalf("after adding an app, a's member got %q", got)
 	}
-	added := connect(t, relay.srv, appB, person{"u1", "s1", []string{"room"}})
+	added := connect(t, proc.srv, appB, person{"u1", "s1", []string{"room"}})
 	added.join("room")
-	command(t, relay.srv, appB, "/publish", `{"id":"1","channel":"room","event":"new","payload":{}}`)
+	command(t, proc.srv, appB, "/publish", `{"id":"1","channel":"room","event":"new","payload":{}}`)
 	if got := added.read(); got != `[null,null,"room","new",{}]` {
 		t.Fatalf("the added app's member got %q", got)
 	}
 
-	relay.reload(appB)
+	proc.reload(appB)
 	if code := member.closeStatus(); code != websocket.StatusNormalClosure {
 		t.Fatalf("a removed app's socket closed with %v", code)
 	}
@@ -45,13 +45,13 @@ func TestHangupReloadsTheAppsFileWithoutDroppingSockets(t *testing.T) {
 }
 
 func TestHangupWithABrokenAppsFileKeepsServing(t *testing.T) {
-	relay := startProcess(t, appA)
-	member := connect(t, relay.srv, appA, person{"u1", "s1", []string{"room"}})
+	proc := startProcess(t, appA)
+	member := connect(t, proc.srv, appA, person{"u1", "s1", []string{"room"}})
 	member.join("room")
-	relay.write(`{}`)
-	relay.hangup()
-	waitFor(t, func() bool { return strings.Contains(relay.stderr.String(), "apps file refused") })
-	command(t, relay.srv, appA, "/publish", `{"id":"1","channel":"room","event":"new","payload":{}}`)
+	proc.write(`{}`)
+	proc.hangup()
+	waitFor(t, func() bool { return strings.Contains(proc.stderr.String(), "apps file refused") })
+	command(t, proc.srv, appA, "/publish", `{"id":"1","channel":"room","event":"new","payload":{}}`)
 	if got := member.read(); got != `[null,null,"room","new",{}]` {
 		t.Fatalf("got %q", got)
 	}
@@ -70,8 +70,8 @@ type process struct {
 func startProcess(t *testing.T, apps ...testApp) *process {
 	t.Helper()
 	dir := t.TempDir()
-	binary := filepath.Join(dir, "relay")
-	if out, err := exec.Command("go", "build", "-o", binary, "../cmd/relay").CombinedOutput(); err != nil {
+	binary := filepath.Join(dir, "protobase-realtime")
+	if out, err := exec.Command("go", "build", "-o", binary, "../cmd/protobase-realtime").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
 	addr := freeAddr(t)
@@ -79,7 +79,7 @@ func startProcess(t *testing.T, apps ...testApp) *process {
 		srv: &httptest.Server{URL: "http://" + addr}}
 	p.write(appsFile(apps...))
 	p.cmd = exec.Command(binary)
-	p.cmd.Env = append(os.Environ(), "RELAY_APPS_FILE="+p.file, "RELAY_ADDR="+addr)
+	p.cmd.Env = append(os.Environ(), "PROTOBASE_REALTIME_APPS_FILE="+p.file, "PROTOBASE_REALTIME_ADDR="+addr)
 	p.cmd.Stderr = p.stderr
 	if err := p.cmd.Start(); err != nil {
 		t.Fatal(err)

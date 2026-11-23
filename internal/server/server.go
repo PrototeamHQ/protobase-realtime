@@ -1,5 +1,5 @@
-// Package relay wires the socket endpoint and the app commands into one HTTP handler.
-package relay
+// Package server wires the socket endpoint and the app commands into one HTTP handler.
+package server
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"github.com/PrototeamHQ/protobase-realtime/internal/ticket"
 )
 
-type Relay struct {
+type Server struct {
 	Hub     *hub.Hub
 	Handler http.Handler
 
@@ -32,8 +32,8 @@ type Relay struct {
 }
 
 // New serves apps, reporting errors to errs.
-func New(apps []config.App, now func() time.Time, errs *errreport.Reporter) *Relay {
-	r := &Relay{now: now, started: now(), errs: errs, reporting: map[string]*reporting{}}
+func New(apps []config.App, now func() time.Time, errs *errreport.Reporter) *Server {
+	r := &Server{now: now, started: now(), errs: errs, reporting: map[string]*reporting{}}
 	for _, app := range apps {
 		if app.Presence != nil {
 			r.reporting[app.ID] = newReporting(app, now, r.started, errs)
@@ -50,7 +50,7 @@ func New(apps []config.App, now func() time.Time, errs *errreport.Reporter) *Rel
 }
 
 // Start reports presence in the background until ctx ends.
-func (r *Relay) Start(ctx context.Context) {
+func (r *Server) Start(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ctx = ctx
@@ -60,7 +60,7 @@ func (r *Relay) Start(ctx context.Context) {
 }
 
 // Reporter returns the presence reporter of an app, or nil when the app reports no presence.
-func (r *Relay) Reporter(app string) *presence.Reporter {
+func (r *Server) Reporter(app string) *presence.Reporter {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p := r.reporting[app]
@@ -70,7 +70,7 @@ func (r *Relay) Reporter(app string) *presence.Reporter {
 	return p.reporter
 }
 
-func (r *Relay) trackers() map[string]hub.Presence {
+func (r *Server) trackers() map[string]hub.Presence {
 	trackers := map[string]hub.Presence{}
 	for id, p := range r.reporting {
 		trackers[id] = p.tracker

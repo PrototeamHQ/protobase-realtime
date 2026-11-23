@@ -18,7 +18,7 @@ import (
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/config"
 	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
-	"github.com/PrototeamHQ/protobase-realtime/internal/relay"
+	"github.com/PrototeamHQ/protobase-realtime/internal/server"
 )
 
 type testApp struct {
@@ -37,7 +37,7 @@ func start(t *testing.T) *httptest.Server {
 }
 
 // startWith serves apps a and b, a with presence when it is set, on the given clock.
-func startWith(t *testing.T, presence *config.Presence, now func() time.Time) (*httptest.Server, *relay.Relay) {
+func startWith(t *testing.T, presence *config.Presence, now func() time.Time) (*httptest.Server, *server.Server) {
 	t.Helper()
 	var apps []config.App
 	for _, a := range []testApp{appA, appB} {
@@ -46,7 +46,7 @@ func startWith(t *testing.T, presence *config.Presence, now func() time.Time) (*
 			Limits: config.Limits{Connections: 50, ChannelsPerTicket: 10, RequestBytes: 4096}})
 	}
 	apps[0].Presence = presence
-	r := relay.New(apps, now, errreport.Off())
+	r := server.New(apps, now, errreport.Off())
 	srv := httptest.NewServer(r.Handler)
 	t.Cleanup(func() {
 		r.Hub.CloseAll()

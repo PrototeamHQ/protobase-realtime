@@ -31,7 +31,7 @@ func New(dsn, release string) (*Reporter, error) {
 	client, err := sentry.NewClient(sentry.ClientOptions{Dsn: dsn, Release: release, BeforeSend: scrub})
 	if err != nil {
 		// The parse error may quote the DSN, which holds the tracker's key.
-		return nil, errors.New("RELAY_SENTRY_DSN must be a DSN such as https://<key>@<host>/<project>")
+		return nil, errors.New("PROTOBASE_REALTIME_SENTRY_DSN must be a DSN such as https://<key>@<host>/<project>")
 	}
 	return &Reporter{client: client}, nil
 }
@@ -73,7 +73,7 @@ func (r *Reporter) Contain(app string, end func()) {
 		return
 	}
 	r.panicked(app, v)
-	fmt.Fprintf(os.Stderr, "relay: panic in a connection of app %q: %v\n%s", app, v, debug.Stack())
+	fmt.Fprintf(os.Stderr, "protobase-realtime: panic in a connection of app %q: %v\n%s", app, v, debug.Stack())
 	end()
 }
 

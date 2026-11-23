@@ -1,4 +1,4 @@
-# protobase-realtime
+# Protobase Realtime
 
 A multi-tenant realtime relay. It holds the WebSocket connections of many apps' users, so an app and its database can
 sleep while people stay connected: the app talks to the relay only when something happens, and the relay fans it out.
@@ -41,14 +41,14 @@ publishes the result.
 ## Running
 
 ```sh
-RELAY_APPS_FILE=apps.json RELAY_ADDR=:4000 go run ./cmd/relay
+PROTOBASE_REALTIME_APPS_FILE=apps.json PROTOBASE_REALTIME_ADDR=:4000 go run ./cmd/protobase-realtime
 ```
 
-| Variable           | Meaning                                                                          |
-| ------------------ | -------------------------------------------------------------------------------- |
-| `RELAY_APPS_FILE`  | The apps file, required.                                                         |
-| `RELAY_ADDR`       | The listen address; `:4000` when unset.                                          |
-| `RELAY_SENTRY_DSN` | The DSN of an error tracker that speaks the Sentry protocol; no reporting unset. |
+| Variable                        | Meaning                                                                          |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| `PROTOBASE_REALTIME_APPS_FILE`  | The apps file, required.                                                         |
+| `PROTOBASE_REALTIME_ADDR`       | The listen address; `:4000` when unset.                                          |
+| `PROTOBASE_REALTIME_SENTRY_DSN` | The DSN of an error tracker that speaks the Sentry protocol; no reporting unset. |
 
 The apps file lists every app the relay serves; the relay reads it at startup and refuses unknown fields and a file
 without an `apps` key. An empty list, `{"apps": []}`, is valid: the relay then serves no app, so it can start before
@@ -71,8 +71,8 @@ sees a restart:
 
 ### Error reporting
 
-With `RELAY_SENTRY_DSN` set, the relay reports its errors to that tracker over the Sentry protocol; a DSN that does not
-parse stops startup. It reports:
+With `PROTOBASE_REALTIME_SENTRY_DSN` set, the relay reports its errors to that tracker over the Sentry protocol; a DSN
+that does not parse stops startup. It reports:
 
 - an apps file that fails to load, at startup or on `SIGHUP`;
 - a panic in a socket or an app command, after which that socket or request ends and the relay serves on;
@@ -139,11 +139,11 @@ The relay terminates no TLS: run it behind a reverse proxy that does.
 ### As a container
 
 The `Dockerfile` builds a static relay into a minimal image that runs as a non-root user, carries CA certificates for
-presence reports over https, listens on `:4000` and reads its apps file from `/etc/relay/apps.json`:
+presence reports over https, listens on `:4000` and reads its apps file from `/etc/protobase-realtime/apps.json`:
 
 ```sh
 docker pull ghcr.io/prototeamhq/protobase-realtime:1.2.3
-docker run -p 4000:4000 -v "$PWD/apps.json:/etc/relay/apps.json:ro" ghcr.io/prototeamhq/protobase-realtime:1.2.3
+docker run -p 4000:4000 -v "$PWD/apps.json:/etc/protobase-realtime/apps.json:ro" ghcr.io/prototeamhq/protobase-realtime:1.2.3
 docker run --rm ghcr.io/prototeamhq/protobase-realtime:1.2.3 -version   # 1.2.3
 ```
 
@@ -160,20 +160,20 @@ Each GitHub release carries the relay prebuilt for Linux, macOS and Windows, so 
 
 | Platform    | Asset                               |
 | ----------- | ----------------------------------- |
-| Linux x64   | `protobase-relay-linux-amd64`       |
-| Linux arm64 | `protobase-relay-linux-arm64`       |
-| macOS x64   | `protobase-relay-darwin-amd64`      |
-| macOS arm64 | `protobase-relay-darwin-arm64`      |
-| Windows x64 | `protobase-relay-windows-amd64.exe` |
+| Linux x64   | `protobase-realtime-linux-amd64`       |
+| Linux arm64 | `protobase-realtime-linux-arm64`       |
+| macOS x64   | `protobase-realtime-darwin-amd64`      |
+| macOS arm64 | `protobase-realtime-darwin-arm64`      |
+| Windows x64 | `protobase-realtime-windows-amd64.exe` |
 
 An asset downloads from `https://github.com/PrototeamHQ/protobase-realtime/releases/download/v<version>/<asset>`, and
 `SHA256SUMS` beside it holds every asset's SHA-256 digest in `sha256sum` format:
 
 ```sh
 base=https://github.com/PrototeamHQ/protobase-realtime/releases/download/v1.2.3
-curl -fL -O "$base/protobase-relay-linux-amd64" -O "$base/SHA256SUMS"
+curl -fL -O "$base/protobase-realtime-linux-amd64" -O "$base/SHA256SUMS"
 sha256sum -c --ignore-missing SHA256SUMS
-chmod +x protobase-relay-linux-amd64 && ./protobase-relay-linux-amd64 -version   # 1.2.3
+chmod +x protobase-realtime-linux-amd64 && ./protobase-realtime-linux-amd64 -version   # 1.2.3
 ```
 
 <gap>Release assets cannot be downloaded anonymously because public access to the repository is not enabled yet.</gap>
@@ -342,7 +342,7 @@ WebSocket clients, phoenix.js among them.
 Cutting a release is pushing a tag `vX.Y.Z` from `main`. `.github/workflows/release.yml` then builds every asset with
 `scripts/build-release.sh`, checks them against `SHA256SUMS` and creates the release `vX.Y.Z` with them attached, using
 only the workflow's own token; a tag such as `v1.3.0-rc.1` makes a prerelease. The assets are
-`protobase-relay-<GOOS>-<GOARCH>` (`.exe` on Windows) for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 and
+`protobase-realtime-<GOOS>-<GOARCH>` (`.exe` on Windows) for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 and
 windows/amd64, plus `SHA256SUMS`, each at
 `https://github.com/PrototeamHQ/protobase-realtime/releases/download/v<version>/<asset>`. Pull requests run the same build and
 check, publishing nothing.

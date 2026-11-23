@@ -8,7 +8,7 @@ import (
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/config"
 	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
-	"github.com/PrototeamHQ/protobase-realtime/internal/relay"
+	"github.com/PrototeamHQ/protobase-realtime/internal/server"
 )
 
 // startDeclared serves app a from an apps file that lets clients send typing on conversations channels only.
@@ -21,7 +21,7 @@ func startDeclared(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := relay.New(apps, time.Now, errreport.Off())
+	r := server.New(apps, time.Now, errreport.Off())
 	srv := httptest.NewServer(r.Handler)
 	t.Cleanup(func() {
 		r.Hub.CloseAll()

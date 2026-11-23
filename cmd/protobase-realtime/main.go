@@ -1,6 +1,6 @@
-// Command relay serves the realtime relay. RELAY_APPS_FILE names the apps file, which it reads again on SIGHUP;
-// RELAY_ADDR the listen address; RELAY_SENTRY_DSN, when set, the error tracker errors are reported to. With -version
-// it prints its version and exits.
+// Command protobase-realtime serves the realtime relay. PROTOBASE_REALTIME_APPS_FILE names the apps file, which it
+// reads again on SIGHUP; PROTOBASE_REALTIME_ADDR the listen address; PROTOBASE_REALTIME_SENTRY_DSN, when set, the error
+// tracker errors are reported to. With -version it prints its version and exits.
 package main
 
 import (
@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
-	"github.com/PrototeamHQ/protobase-realtime/internal/relay"
+	"github.com/PrototeamHQ/protobase-realtime/internal/server"
 )
 
 const defaultAddr = ":4000"
@@ -34,30 +34,30 @@ func main() {
 		return
 	}
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "relay:", err)
+		fmt.Fprintln(os.Stderr, "protobase-realtime:", err)
 		os.Exit(1)
 	}
 }
 
 func run() error {
-	errs, err := errreport.New(os.Getenv("RELAY_SENTRY_DSN"), version)
+	errs, err := errreport.New(os.Getenv("PROTOBASE_REALTIME_SENTRY_DSN"), version)
 	if err != nil {
 		return err
 	}
 	defer errs.Flush(flushTimeout)
-	path := os.Getenv("RELAY_APPS_FILE")
+	path := os.Getenv("PROTOBASE_REALTIME_APPS_FILE")
 	if path == "" {
-		return errors.New("RELAY_APPS_FILE must name the apps file")
+		return errors.New("PROTOBASE_REALTIME_APPS_FILE must name the apps file")
 	}
 	apps, err := load(path, errs)
 	if err != nil {
 		return err
 	}
-	addr := os.Getenv("RELAY_ADDR")
+	addr := os.Getenv("PROTOBASE_REALTIME_ADDR")
 	if addr == "" {
 		addr = defaultAddr
 	}
-	r := relay.New(apps, time.Now, errs)
+	r := server.New(apps, time.Now, errs)
 	server := &http.Server{Addr: addr, Handler: r.Handler, ReadHeaderTimeout: 10 * time.Second}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -79,7 +79,7 @@ func run() error {
 }
 
 // serve waits until the server fails or ctx ends, reloading the apps file on each hangup.
-func serve(ctx context.Context, served <-chan error, hangup <-chan os.Signal, r *relay.Relay, path string,
+func serve(ctx context.Context, served <-chan error, hangup <-chan os.Signal, r *server.Server, path string,
 	errs *errreport.Reporter) error {
 	for {
 		select {

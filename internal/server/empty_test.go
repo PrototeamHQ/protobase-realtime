@@ -1,4 +1,4 @@
-package relay
+package server
 
 import (
 	"net/http"
@@ -14,7 +14,7 @@ import (
 
 const emptyKey = "0123456789abcdef0123456789abcdef"
 
-func TestARelayWithNoAppsAnswersHealthAndRefusesAppCommandsAndSockets(t *testing.T) {
+func TestAServerWithNoAppsAnswersHealthAndRefusesAppCommandsAndSockets(t *testing.T) {
 	r := New(nil, time.Now, errreport.Off())
 
 	res := httptest.NewRecorder()

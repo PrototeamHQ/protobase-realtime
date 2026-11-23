@@ -53,7 +53,7 @@ jobs:
       - name: Serve with a mounted apps file
         run: |
           docker run --detach --name "$CONTAINER" --publish 127.0.0.1::4000 \
-            --volume "$PWD/examples/apps.json:/etc/relay/apps.json:ro" "$IMAGE"
+            --volume "$PWD/examples/apps.json:/etc/protobase-realtime/apps.json:ro" "$IMAGE"
           port=$(docker port "$CONTAINER" 4000/tcp | head -n 1 | sed 's/.*://')
           curl --silent --show-error --fail --retry 10 --retry-all-errors --retry-delay 1 \
             "http://127.0.0.1:$port/health"
@@ -101,7 +101,7 @@ jobs:
       - name: Print the version
         working-directory: ${{ runner.temp }}/release
         run: |
-          reported=$(./protobase-relay-linux-amd64 -version)
+          reported=$(./protobase-realtime-linux-amd64 -version)
           if [ "$reported" != "$VERSION" ]; then
             echo "The relay reported version $reported, not $VERSION" >&2
             exit 1

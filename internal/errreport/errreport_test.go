@@ -111,7 +111,8 @@ func TestOffSendsNothingAndStillRecoversPanics(t *testing.T) {
 
 func TestAnInvalidDSNNamesTheVariableAndNotTheDSN(t *testing.T) {
 	_, err := errreport.New("not a dsn with a-secret-key", "test")
-	if err == nil || !strings.Contains(err.Error(), "RELAY_SENTRY_DSN") || strings.Contains(err.Error(), "a-secret-key") {
+	if err == nil || !strings.Contains(err.Error(), "PROTOBASE_REALTIME_SENTRY_DSN") ||
+		strings.Contains(err.Error(), "a-secret-key") {
 		t.Fatalf("got %v", err)
 	}
 }

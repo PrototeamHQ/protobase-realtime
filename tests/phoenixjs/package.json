@@ -1,5 +1,5 @@
 {
-  "name": "relay-phoenixjs-check",
+  "name": "protobase-realtime-phoenixjs-check",
   "private": true,
   "type": "module",
   "dependencies": {

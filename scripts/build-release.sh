@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cross-compiles the relay for every released platform and writes the release assets with their checksums:
 #   scripts/build-release.sh <version> <out dir>
-# Each asset is protobase-relay-<GOOS>-<GOARCH>, with .exe on Windows, and reports <version> with -version.
+# Each asset is protobase-realtime-<GOOS>-<GOARCH>, with .exe on Windows, and reports <version> with -version.
 # <out dir>/SHA256SUMS lists every asset in sha256sum's format, so `sha256sum -c SHA256SUMS` checks them.
 set -euo pipefail
 
@@ -22,12 +22,12 @@ assets=()
 for platform in "${platforms[@]}"; do
   goos=${platform%/*}
   goarch=${platform#*/}
-  asset="protobase-relay-$goos-$goarch"
+  asset="protobase-realtime-$goos-$goarch"
   if [ "$goos" = windows ]; then
     asset="$asset.exe"
   fi
   (cd "$root" && CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
-    go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$out/$asset" ./cmd/relay)
+    go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$out/$asset" ./cmd/protobase-realtime)
   assets+=("$asset")
 done
 

@@ -1,4 +1,4 @@
-package relay
+package server
 
 import (
 	"encoding/json"
@@ -19,7 +19,7 @@ type healthBody struct {
 func health(started time.Time) http.Handler {
 	body, err := json.Marshal(healthBody{OK: true, Started: started.UnixMilli()})
 	if err != nil {
-		panic("relay: health: " + err.Error())
+		panic("server: health: " + err.Error())
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
