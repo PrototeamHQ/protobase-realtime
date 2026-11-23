@@ -409,3 +409,7 @@ The release build and check, as pull requests run them:
 ```sh
 scripts/build-release.sh 0.0.0-dev /tmp/release && (cd /tmp/release && sha256sum -c SHA256SUMS)
 ```
+
+## License
+
+Apache-2.0, see [LICENSE](LICENSE).
