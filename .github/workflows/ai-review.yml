@@ -14,7 +14,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   # The repository's CI workflows, by name: each run that finishes tries the merge again. Never list ai-review itself.
   workflow_run:
-    workflows: [ci, npm]
+    workflows: [ci]
     types: [completed]
   # Another app's check suite or commit status that finishes tries the merge again too, as its completion starts no
   # workflow_run. A pending status runs no job.

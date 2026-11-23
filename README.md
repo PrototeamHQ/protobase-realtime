@@ -150,26 +150,29 @@ shell, so it declares no health check: probe `GET /health` from outside.
 
 <gap>The image cannot be pulled from a registry because publishing it is not implemented.</gap>
 
-### From npm
+### From a release
 
-The relay is published prebuilt on npm for macOS (arm64, x64), Linux (arm64, x64) and Windows (x64), so it runs without
-Go:
+Each GitHub release carries the relay prebuilt for Linux, macOS and Windows, so it runs without Go:
+
+| Platform    | Asset                               |
+| ----------- | ----------------------------------- |
+| Linux x64   | `protobase-relay-linux-amd64`       |
+| Linux arm64 | `protobase-relay-linux-arm64`       |
+| macOS x64   | `protobase-relay-darwin-amd64`      |
+| macOS arm64 | `protobase-relay-darwin-arm64`      |
+| Windows x64 | `protobase-relay-windows-amd64.exe` |
+
+An asset downloads from `https://github.com/PrototeamHQ/protobase-realtime/releases/download/v<version>/<asset>`, and
+`SHA256SUMS` beside it holds every asset's SHA-256 digest in `sha256sum` format:
 
 ```sh
-npm install @protobase/realtime
-RELAY_APPS_FILE=apps.json npx protobase-realtime
+base=https://github.com/PrototeamHQ/protobase-realtime/releases/download/v1.2.3
+curl -fL -O "$base/protobase-relay-linux-amd64" -O "$base/SHA256SUMS"
+sha256sum -c --ignore-missing SHA256SUMS
+chmod +x protobase-relay-linux-amd64 && ./protobase-relay-linux-amd64 -version   # 1.2.3
 ```
 
-`@protobase/realtime` depends on one optional package per platform, `@protobase/realtime-<os>-<arch>` with Node's
-`process.platform` and `process.arch` names, and npm installs only the one that matches the machine; an install that
-omits optional dependencies has no relay. A tool that starts the relay itself takes the binary's path from
-`binaryPath()`:
-
-```js
-import { binaryPath } from "@protobase/realtime"
-```
-
-`protobase-realtime --version` prints the version, which is the release's.
+<gap>Release assets cannot be downloaded anonymously because public access to the repository is not enabled yet.</gap>
 
 ## Tickets
 
@@ -329,19 +332,17 @@ go vet ./... && go test ./...
 Unit tests sit next to the code; `tests/` holds the integration tests, which serve the relay and connect real
 WebSocket clients, phoenix.js among them.
 
+
 ### Releasing
 
-Publishing a GitHub release tagged `v1.2.3` publishes the npm packages at `1.2.3` (`.github/workflows/npm.yml`); a
-prerelease such as `v1.3.0-rc.1` goes under npm's `next` dist-tag. The workflow cross-compiles the relay
-(`npm/pack.mjs`), installs the packages from a local registry on each platform and runs the relay npm picked
-(`npm/verify-install.sh`), then publishes through npm's trusted publishing, with no stored npm token. Run by hand with
-an existing tag, it publishes that tag again, skipping versions npm already has. Pull requests that touch the packaging
-run every step but the publish.
-
-npm trusts the workflow only for a package that already exists, so a new package is published once by hand, then
-`.github/workflows/npm.yml` in this repository is registered as its trusted publisher in the package's settings on npm.
+Cutting a release is pushing a tag `vX.Y.Z` from `main`. `.github/workflows/release.yml` then builds every asset with
+`scripts/build-release.sh`, checks them against `SHA256SUMS` and creates the release `vX.Y.Z` with them attached, using
+only the workflow's own token; a tag such as `v1.3.0-rc.1` makes a prerelease. The assets are
+`protobase-relay-<GOOS>-<GOARCH>` (`.exe` on Windows) for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 and
+windows/amd64, plus `SHA256SUMS`, each at
+`https://github.com/PrototeamHQ/protobase-realtime/releases/download/v<version>/<asset>`. Pull requests run the same build and
+check, publishing nothing:
 
 ```sh
-npm ci --prefix npm && npm test --prefix npm   # the launcher's unit tests
-node npm/pack.mjs 0.0.0-dev /tmp/packages && npm/verify-install.sh /tmp/packages 0.0.0-dev
+scripts/build-release.sh 0.0.0-dev /tmp/release && (cd /tmp/release && sha256sum -c SHA256SUMS)
 ```

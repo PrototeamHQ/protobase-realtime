@@ -63,3 +63,31 @@ jobs:
         run: |
           docker rm --force "$CONTAINER" || true
           docker image rm --force "$IMAGE" || true
+
+  # Builds the release assets as a tag would, publishing nothing: every platform's relay must check out against
+  # SHA256SUMS, and the Linux x64 relay must print the version it was built with.
+  release-build:
+    runs-on: hetzner-vm
+    env:
+      VERSION: 0.0.0-ci.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/build-release.sh "$VERSION" "$RUNNER_TEMP/release"
+      - name: Check the checksums
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          test "$(wc -l < SHA256SUMS)" -eq 5
+          sha256sum -c SHA256SUMS
+      - name: Print the version
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          reported=$(./protobase-relay-linux-amd64 -version)
+          if [ "$reported" != "$VERSION" ]; then
+            echo "The relay reported version $reported, not $VERSION" >&2
+            exit 1
+          fi
