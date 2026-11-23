@@ -3,10 +3,6 @@
 A realtime relay for Protobase apps. It keeps many apps' users connected over WebSocket, so a quiet app and its
 database can sleep.
 
-App to people: the app publishes over HTTP, and the relay pushes to the channel. People to app: lasting writes, like a
-sent message, go through the app's own API; no socket message reaches the app. Between people: fleeting events, like
-typing, pass through the relay, checked against the app's rules and stamped with a verified sender.
-
 ## How messages flow
 
 ### App to people
@@ -27,8 +23,8 @@ socket of a sign-in session when someone signs out. All are idempotent, so the a
 
 ### People to app
 
-Lasting writes go through the app's own API, as they would without the relay: the app checks them, stores them and
-publishes the result. Nothing a client sends over the socket reaches the app, and the relay makes no request to the app
+This path is not part of the relay. Lasting writes go through the app's own API, as they would without the relay:
+the app checks them, stores them and publishes the result. Nothing a client sends over the socket reaches the app, and the relay makes no request to the app
 except [presence reports](#presence). For example, sending a message is a request to the app, which then publishes
 `message_created` to the conversation, the sender's other devices included.
 
