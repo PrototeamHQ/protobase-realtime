@@ -1,7 +1,8 @@
 # Protobase Realtime
 
-A realtime relay for Protobase apps. It keeps many apps' users connected over WebSocket, so a quiet app and its
-database can sleep.
+Multi-tenant WebSocket relay for Protobase apps: server-to-client push, plus filtered, verified user-to-user events.
+
+It keeps many apps' users connected over WebSocket, so a quiet app and its database can sleep.
 
 ## How messages flow
 
