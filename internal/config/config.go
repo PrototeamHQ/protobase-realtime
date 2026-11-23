@@ -29,8 +29,10 @@ type App struct {
 	Limits       Limits        `json:"limits"`
 }
 
+// File is the apps file. Apps is a pointer so a file without the key is told apart from one that lists no apps,
+// which is valid: the relay then serves no app.
 type File struct {
-	Apps []App `json:"apps"`
+	Apps *[]App `json:"apps"`
 }
 
 const minKeyLength = 32
@@ -52,12 +54,13 @@ func Parse(raw []byte) ([]App, error) {
 	if err := dec.Decode(&file); err != nil {
 		return nil, fmt.Errorf("apps file: %w", err)
 	}
-	if len(file.Apps) == 0 {
-		return nil, fmt.Errorf("apps file: lists no apps")
+	if file.Apps == nil {
+		return nil, fmt.Errorf("apps file: \"apps\" is missing or null")
 	}
+	apps := *file.Apps
 	ids := map[string]bool{}
-	for i := range file.Apps {
-		app := &file.Apps[i]
+	for i := range apps {
+		app := &apps[i]
 		if err := validate(app); err != nil {
 			return nil, fmt.Errorf("apps file: app %q: %w", app.ID, err)
 		}
@@ -66,7 +69,7 @@ func Parse(raw []byte) ([]App, error) {
 		}
 		ids[app.ID] = true
 	}
-	return file.Apps, nil
+	return apps, nil
 }
 
 func validate(app *App) error {

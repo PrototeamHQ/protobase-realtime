@@ -23,9 +23,18 @@ func TestParseReadsApps(t *testing.T) {
 	}
 }
 
+func TestParseReadsAnEmptyAppsList(t *testing.T) {
+	apps, err := Parse([]byte(`{"apps":[]}`))
+	if err != nil || apps == nil || len(apps) != 0 {
+		t.Fatalf("got %v %v", apps, err)
+	}
+}
+
 func TestParseRefuses(t *testing.T) {
 	cases := map[string]string{
-		"no apps":            `{"apps":[]}`,
+		"no apps key":        `{}`,
+		"null apps":          `{"apps":null}`,
+		"not json":           `apps`,
 		"unknown field":      `{"apps":[` + appJSON("chat", `,"colour":"red"`) + `]}`,
 		"duplicate":          `{"apps":[` + appJSON("chat", "") + `,` + appJSON("chat", "") + `]}`,
 		"bad id":             `{"apps":[` + appJSON("Chat App", "") + `]}`,

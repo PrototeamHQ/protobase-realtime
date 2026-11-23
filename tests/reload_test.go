@@ -48,7 +48,7 @@ func TestHangupWithABrokenAppsFileKeepsServing(t *testing.T) {
 	relay := startProcess(t, appA)
 	member := connect(t, relay.srv, appA, person{"u1", "s1", []string{"room"}})
 	member.join("room")
-	relay.write(`{"apps":[]}`)
+	relay.write(`{}`)
 	relay.hangup()
 	waitFor(t, func() bool { return strings.Contains(relay.stderr.String(), "apps file refused") })
 	command(t, relay.srv, appA, "/publish", `{"id":"1","channel":"room","event":"new","payload":{}}`)

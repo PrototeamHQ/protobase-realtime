@@ -47,6 +47,19 @@ func TestReloadClosesARemovedAppsSocketsAndRefusesNewOnes(t *testing.T) {
 	}
 }
 
+func TestReloadToNoAppsClosesTheLastAppsSockets(t *testing.T) {
+	h := New([]config.App{testConfig("a", 10)}, nil)
+	a, _ := h.App("a")
+	_, sink := connect(t, a, "u1", "s1")
+	h.Reload(nil, nil)
+	if _, ok := h.App("a"); ok {
+		t.Fatal("the last app is still served")
+	}
+	if sink.closed != "app removed" {
+		t.Fatalf("closed %q", sink.closed)
+	}
+}
+
 func TestReloadAddsANewApp(t *testing.T) {
 	h := New([]config.App{testConfig("a", 10)}, nil)
 	h.Reload([]config.App{testConfig("a", 10), testConfig("b", 10)}, nil)

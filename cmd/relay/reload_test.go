@@ -26,3 +26,16 @@ func TestReloadRefusesAFileThatFailsToLoad(t *testing.T) {
 		t.Fatal("a refused file was applied")
 	}
 }
+
+func TestReloadTakesAFileThatListsNoApps(t *testing.T) {
+	apps := []config.App{{ID: "a", Limits: config.Limits{Connections: 1, ChannelsPerTicket: 1, RequestBytes: 1}}}
+	r := relay.New(apps, time.Now, errreport.Off())
+	path := filepath.Join(t.TempDir(), "apps.json")
+	if err := os.WriteFile(path, []byte(`{"apps":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reload(r, path, errreport.Off())
+	if _, ok := r.Hub.App("a"); ok {
+		t.Fatal("an app the file no longer lists is still served")
+	}
+}

@@ -50,7 +50,9 @@ RELAY_APPS_FILE=apps.json RELAY_ADDR=:4000 go run ./cmd/relay
 | `RELAY_ADDR`       | The listen address; `:4000` when unset.                                          |
 | `RELAY_SENTRY_DSN` | The DSN of an error tracker that speaks the Sentry protocol; no reporting unset. |
 
-The apps file lists every app the relay serves; the relay reads it at startup and refuses unknown fields.
+The apps file lists every app the relay serves; the relay reads it at startup and refuses unknown fields and a file
+without an `apps` key. An empty list, `{"apps": []}`, is valid: the relay then serves no app, so it can start before
+the first app exists and keep running after the last one goes.
 
 On `SIGHUP` the relay reads the apps file again and swaps it in whole, without a restart. Apps still listed keep their
 sockets, channels and presence, and take changed keys, origins, client events, presence and limits from the next event
