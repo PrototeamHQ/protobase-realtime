@@ -1,0 +1,107 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # The stock Phoenix JavaScript client the integration tests connect with.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci --prefix tests/phoenixjs
+      - name: Test
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+          go test -race ./...
+
+  # Builds the container image and runs it with the example apps file: it must print the version it was built with and
+  # answer 200 on its health path.
+  image:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: protobase-realtime-ci:${{ github.run_id }}-${{ github.run_attempt }}
+      CONTAINER: protobase-realtime-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      VERSION: 0.0.0-ci.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: docker build --build-arg "VERSION=$VERSION" --tag "$IMAGE" .
+      - name: Print the version
+        run: |
+          reported=$(docker run --rm "$IMAGE" -version)
+          if [ "$reported" != "$VERSION" ]; then
+            echo "The image reported version $reported, not $VERSION" >&2
+            exit 1
+          fi
+      - name: Serve with a mounted apps file
+        run: |
+          docker run --detach --name "$CONTAINER" --publish 127.0.0.1::4000 \
+            --volume "$PWD/examples/apps.json:/etc/protobase-realtime/apps.json:ro" "$IMAGE"
+          port=$(docker port "$CONTAINER" 4000/tcp | head -n 1 | sed 's/.*://')
+          curl --silent --show-error --fail --retry 10 --retry-all-errors --retry-delay 1 \
+            "http://127.0.0.1:$port/health"
+      - if: failure()
+        run: docker logs "$CONTAINER"
+      - if: always()
+        run: |
+          docker rm --force "$CONTAINER" || true
+          docker image rm --force "$IMAGE" || true
+
+  # Builds the image for every platform image.yml publishes, as a tag would, pushing nothing.
+  image-platforms:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=0.0.0-ci.${{ github.run_id }}
+          push: false
+
+  # Builds the release assets as a tag would, publishing nothing: every platform's relay must check out against
+  # SHA256SUMS, and the Linux x64 relay must print the version it was built with.
+  release-build:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: 0.0.0-ci.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: scripts/build-release.sh "$VERSION" "$RUNNER_TEMP/release"
+      - name: Check the checksums
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          test "$(wc -l < SHA256SUMS)" -eq 5
+          sha256sum -c SHA256SUMS
+      - name: Print the version
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          reported=$(./protobase-realtime-linux-amd64 -version)
+          if [ "$reported" != "$VERSION" ]; then
+            echo "The relay reported version $reported, not $VERSION" >&2
+            exit 1
+          fi

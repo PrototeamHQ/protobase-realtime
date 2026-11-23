@@ -1,0 +1,37 @@
+# Merges a pull request with the auto-merge-approvals label through the shared workflow in protobase-community/.github,
+# which holds the rules (.github/auto-merge-approvals/decision.ts there). Releases start from tags, so a merge starts
+# no other workflow.
+name: auto-merge-approvals
+
+on:
+  # Adding the label merges a head CodeRabbit already approved, as no later event may come. Taking do-not-merge off or
+  # leaving draft can merge too.
+  pull_request_target: # zizmor: ignore[dangerous-triggers] nothing from the pull request runs
+    types: [labeled, ready_for_review, unlabeled]
+  # An approval, or a dismissed change request.
+  pull_request_review:
+    types: [submitted, dismissed]
+  # The repository's CI workflows, by name: each run that finishes tries again. Never list auto-merge-approvals itself.
+  # coderabbit-follow-up writes its verdict and dismisses with GITHUB_TOKEN, which starts no workflow, so its run's end
+  # is what tries again.
+  workflow_run:
+    workflows: [ci, coderabbit-follow-up]
+    types: [completed]
+  # Another app's check suite or commit status that finishes tries again too, as its completion starts no workflow_run.
+  check_suite:
+    types: [completed]
+  status:
+
+# Merging and deleting the branch take contents: write.
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+jobs:
+  merge:
+    # Adding another label runs nothing.
+    if: github.event.action != 'labeled' || github.event.label.name == 'auto-merge-approvals'
+    uses: protobase-community/.github/.github/workflows/auto-merge-approvals.yml@main

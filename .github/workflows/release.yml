@@ -1,0 +1,39 @@
+# Pushing a tag v1.2.3 creates the GitHub release v1.2.3 with the relay for every platform and SHA256SUMS attached
+# (scripts/build-release.sh); a tag with a prerelease part, such as v1.3.0-rc.1, makes a prerelease.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build the assets
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/build-release.sh "${TAG#v}" "$RUNNER_TEMP/release"
+      - name: Check the checksums
+        working-directory: ${{ runner.temp }}/release
+        run: sha256sum -c SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=()
+          case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes \
+            "${prerelease[@]}" "$RUNNER_TEMP"/release/*

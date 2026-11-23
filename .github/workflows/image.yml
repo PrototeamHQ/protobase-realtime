@@ -1,0 +1,89 @@
+# Pushing a tag v1.2.3 publishes the container image ghcr.io/prototeamhq/protobase-realtime:1.2.3 for linux/amd64 and
+# linux/arm64, beside the release release.yml creates; a prerelease tag such as v1.3.0-rc.1 publishes 1.3.0-rc.1. No
+# tag is ever `latest`, and a version that is already published is never overwritten. Running it by hand publishes an
+# existing tag, such as one pushed before this workflow existed.
+name: image
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The existing tag to publish, such as v1.2.3.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ inputs.tag || github.ref_name }}
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Read the version
+        run: |
+          case "$TAG" in
+            v*) echo "VERSION=${TAG#v}" >> "$GITHUB_ENV" ;;
+            *) echo "The tag $TAG does not start with v" >&2; exit 1 ;;
+          esac
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      # Asks the registry for the version's manifest with a push token, which it grants before the package exists:
+      # 404 means unpublished, 200 published, anything else stops the job.
+      - name: Refuse a published version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repository="${GITHUB_REPOSITORY,,}"
+          echo "IMAGE=ghcr.io/$repository:$VERSION" >> "$GITHUB_ENV"
+          token=$(curl --silent --show-error --fail --user "$GITHUB_ACTOR:$GH_TOKEN" \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:$repository:pull,push" | jq -r .token)
+          echo "::add-mask::$token"
+          status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --head \
+            --header "Authorization: Bearer $token" \
+            --header "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json" \
+            "https://ghcr.io/v2/$repository/manifests/$VERSION")
+          case "$status" in
+            404) ;;
+            200) echo "ghcr.io/$repository:$VERSION is already published" >&2; exit 1 ;;
+            *) echo "The registry answered $status for ghcr.io/$repository:$VERSION" >&2; exit 1 ;;
+          esac
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # The Dockerfile cross-compiles the relay on the runner's platform, so neither platform runs under emulation.
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ env.VERSION }}
+          annotations: index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          tags: ${{ env.IMAGE }}
+          push: true
+      - name: Summarize
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "Published \`$IMAGE\`"
+            echo
+            echo "Digest: \`$DIGEST\`"
+            echo
+            echo "Pin it as \`$IMAGE@$DIGEST\`."
+          } >> "$GITHUB_STEP_SUMMARY"
