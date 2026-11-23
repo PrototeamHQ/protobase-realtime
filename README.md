@@ -98,38 +98,12 @@ PROTOBASE_REALTIME_APPS_FILE=apps.json PROTOBASE_REALTIME_ADDR=:4000 go run ./cm
 | `PROTOBASE_REALTIME_ADDR`       | The listen address; `:4000` when unset.                                          |
 | `PROTOBASE_REALTIME_SENTRY_DSN` | The DSN of an error tracker that speaks the Sentry protocol; no reporting unset. |
 
-The apps file lists every app the relay serves; the relay reads it at startup and refuses unknown fields and a file
-without an `apps` key. An empty list, `{"apps": []}`, is valid: the relay then serves no app, so it can start before
-the first app exists and keep running after the last one goes.
+The relay terminates no TLS: run it behind a reverse proxy that does.
 
-On `SIGHUP` the relay reads the apps file again and swaps it in whole, without a restart. Apps still listed keep their
-sockets, channels and presence, and take changed keys, origins, client events, presence and limits from the next event
-on; a lower `limits.connections` applies to new sockets only. A removed app's sockets close with 1000. A file that fails
-to load is refused: the relay keeps serving the apps it had and writes the reason to stderr.
+### Apps file
 
-### Health
-
-`GET /health` answers `200` while the relay serves, with no auth and nothing about any app, for a container health
-check or an uptime monitor. It checks nothing else. `started` is when the relay started, in milliseconds, so a monitor
-sees a restart:
-
-```json
-{ "ok": true, "started": 1795190000000 }
-```
-
-### Error reporting
-
-With `PROTOBASE_REALTIME_SENTRY_DSN` set, the relay reports its errors to that tracker over the Sentry protocol; a DSN
-that does not parse stops startup. It reports:
-
-- an apps file that fails to load, at startup or on `SIGHUP`;
-- a panic in a socket or an app command, after which that socket or request ends and the relay serves on;
-- an app's presence report that still fails after the relay waited a full minute, once until a report succeeds again.
-
-An event holds the error, its stack, the app id as the `app` tag, the relay's version as the release, and the host and
-Go runtime. It never holds a request, its headers or query string, a user, a ticket, a key or a payload.
-
-<gap>The relay cannot keep serving after a panic in an app's presence reporter because recovering that goroutine is not implemented.</gap>
+The apps file is the JSON file that `PROTOBASE_REALTIME_APPS_FILE` points to. It lists every app the relay serves. The example below
+serves one app, `chat`, and the list after it explains each field.
 
 ```json
 {
@@ -182,7 +156,39 @@ Go runtime. It never holds a request, its headers or query string, a user, a tic
 - `limits.connections`: open sockets for the app; `channels_per_ticket`: channels one ticket may list;
   `request_bytes`: the largest app command body.
 
-The relay terminates no TLS: run it behind a reverse proxy that does.
+The relay reads the file at startup. It rejects unknown fields and a file without an `apps` key. An empty list,
+`{"apps": []}`, is valid: the relay then serves no app, so it can start before the first app exists and keep running
+after the last one is gone.
+
+On `SIGHUP` the relay reads the file again and swaps in the whole new version, without a restart. Apps that are still
+listed keep their sockets, channels and presence, and use changed keys, origins, client events, presence and limits
+from the next event on. A lower `limits.connections` only applies to new sockets. Sockets of a removed app close with
+1000. If the new file fails to load, the relay rejects it, keeps serving the apps it had and writes the reason to
+stderr.
+
+### Health
+
+`GET /health` answers `200` while the relay serves, with no auth and nothing about any app, for a container health
+check or an uptime monitor. It checks nothing else. `started` is when the relay started, in milliseconds, so a monitor
+sees a restart:
+
+```json
+{ "ok": true, "started": 1795190000000 }
+```
+
+### Error reporting
+
+With `PROTOBASE_REALTIME_SENTRY_DSN` set, the relay reports its errors to that tracker over the Sentry protocol; a DSN
+that does not parse stops startup. It reports:
+
+- an apps file that fails to load, at startup or on `SIGHUP`;
+- a panic in a socket or an app command, after which that socket or request ends and the relay serves on;
+- an app's presence report that still fails after the relay waited a full minute, once until a report succeeds again.
+
+An event holds the error, its stack, the app id as the `app` tag, the relay's version as the release, and the host and
+Go runtime. It never holds a request, its headers or query string, a user, a ticket, a key or a payload.
+
+<gap>The relay cannot keep serving after a panic in an app's presence reporter because recovering that goroutine is not implemented.</gap>
 
 ### As a container
 
