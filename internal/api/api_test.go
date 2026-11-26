@@ -117,6 +117,7 @@ func TestPublishRefusesInvalidRequests(t *testing.T) {
 		`{"id":"m","channel":"room","event":"phx_close","payload":{}}`:                                 400,
 		`{"id":"m","channel":"room","event":"client_event","payload":{}}`:                              400,
 		`{"id":"m","channel":"relay","event":"new","payload":{}}`:                                      400,
+		`{"id":"m","channel":"live:q1","event":"new","payload":{}}`:                                    400,
 		`{"id":"m","channel":"room","event":"new","payload":[1]}`:                                      400,
 		`{"id":"m","channel":"room","event":"new","payload":{},"from":"x"}`:                            400,
 		`{"id":"m","channel":"room","event":"new","payload":{"x":"` + strings.Repeat("a", 600) + `"}}`: 413,
