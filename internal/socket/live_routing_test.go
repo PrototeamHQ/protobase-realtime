@@ -167,10 +167,14 @@ func TestAJoinWithACursorResumesAfterIt(t *testing.T) {
 func TestATokensExpiryClosesItsTopic(t *testing.T) {
 	svc := changestest.Start(t, "register-cursor")
 	rec := svc.Session()
-	s := routedSession(t, runClient(t, svc), "u1", "s-r1", liveExpiry.Add(-50*time.Millisecond))
+	s := routedSession(t, runClient(t, svc), "u1", "s-r1", beforeExpiry)
 	exchange(t, s, joinFrame("live:q1", tokenOf(t, rec.Register(t, 0), "u1"), ""))
 	svc.Play(0, 2)
 	expectChange(t, s, "live:q1", rec, 1, "r1")
+	// The test moves the expiry forward instead of waiting on the clock, so it fires only after the change.
+	s.live.mu.Lock()
+	s.live.byTopic["live:q1"].expiry.Reset(0)
+	s.live.mu.Unlock()
 	expectFrame(t, s, closed("live:q1", "expired"))
 	svc.Play(3, 4)
 }
