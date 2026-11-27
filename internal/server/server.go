@@ -45,8 +45,12 @@ func New(apps []config.App, now func() time.Time, errs *errreport.Reporter) *Ser
 	r.Hub = hub.New(apps, r.trackers())
 	mux := http.NewServeMux()
 	mux.Handle("GET "+HealthPath, health(r.started))
-	mux.Handle("GET "+socket.Path, &socket.Handler{Hub: r.Hub, Tickets: ticket.NewVerifier(r.Hub.TicketKeys, now),
-		Now: now, Errors: errs, Changes: r.changesClient})
+	sockets := &socket.Handler{Hub: r.Hub, Tickets: ticket.NewVerifier(r.Hub.TicketKeys, now), Now: now, Errors: errs,
+		Changes: r.changesClient}
+	mux.Handle("GET "+socket.Path, sockets)
+	mux.HandleFunc("GET "+socket.EventsPath, sockets.ServeEvents)
+	mux.HandleFunc("POST "+socket.SendPattern, sockets.ServeSend)
+	mux.HandleFunc("OPTIONS "+socket.SendPattern, sockets.ServeSendPreflight)
 	api.Mount(mux, r.Hub, now, errs)
 	r.Handler = mux
 	return r
