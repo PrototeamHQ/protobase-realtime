@@ -29,6 +29,8 @@ type Server struct {
 	ctx context.Context
 	// reporting holds the presence of the apps that turned it on, by app id.
 	reporting map[string]*reporting
+	// links holds the connections to the changes services apps name, by service id.
+	links map[string]*link
 }
 
 // New serves apps, reporting errors to errs.
@@ -39,23 +41,27 @@ func New(apps []config.App, now func() time.Time, errs *errreport.Reporter) *Ser
 			r.reporting[app.ID] = newReporting(app, now, r.started, errs)
 		}
 	}
+	r.links = links(apps, nil, errs)
 	r.Hub = hub.New(apps, r.trackers())
 	mux := http.NewServeMux()
 	mux.Handle("GET "+HealthPath, health(r.started))
 	mux.Handle("GET "+socket.Path, &socket.Handler{Hub: r.Hub, Tickets: ticket.NewVerifier(r.Hub.TicketKeys, now),
-		Now: now, Errors: errs})
+		Now: now, Errors: errs, Changes: r.changesClient})
 	api.Mount(mux, r.Hub, now, errs)
 	r.Handler = mux
 	return r
 }
 
-// Start reports presence in the background until ctx ends.
+// Start reports presence and connects to the changes services in the background until ctx ends.
 func (r *Server) Start(ctx context.Context) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ctx = ctx
 	for _, p := range r.reporting {
 		p.run(ctx)
+	}
+	for _, l := range r.links {
+		l.run(ctx)
 	}
 }
 

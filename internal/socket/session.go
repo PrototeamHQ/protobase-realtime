@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/PrototeamHQ/protobase-realtime/internal/changes"
 	"github.com/PrototeamHQ/protobase-realtime/internal/hub"
 	"github.com/PrototeamHQ/protobase-realtime/internal/names"
 	"github.com/PrototeamHQ/protobase-realtime/internal/phoenix"
@@ -15,6 +16,9 @@ type session struct {
 	conn *hub.Conn
 	out  *sink
 	now  func() time.Time
+	// changes finds a changes service's client by id, nil when there is none.
+	changes func(service string) *changes.Client
+	live    *liveTopics
 }
 
 type interest struct {
@@ -29,6 +33,8 @@ func (s *session) handle(f phoenix.Frame) {
 		s.joinRelay(f)
 	case names.LiveTopic(f.Topic) && f.Event == phoenix.Join:
 		s.joinLive(f)
+	case names.LiveTopic(f.Topic) && f.Event == phoenix.Leave:
+		s.leaveLive(f)
 	case f.Event == phoenix.Join:
 		s.join(f)
 	case !s.app.IsJoined(s.conn, f.Topic):
