@@ -1,4 +1,4 @@
-// Package socket serves the WebSocket endpoint clients connect to with a ticket.
+// Package socket serves the endpoints clients connect to with a ticket: a WebSocket, or server-sent events.
 package socket
 
 import (
@@ -37,6 +37,8 @@ type Handler struct {
 	Tickets *ticket.Verifier
 	Now     func() time.Time
 	Errors  *errreport.Reporter
+	// streams are the open server-sent event connections, by connection id.
+	streams streams
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
