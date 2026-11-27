@@ -1,4 +1,4 @@
-// Package socket serves the WebSocket endpoint clients connect to with a ticket.
+// Package socket serves the endpoints clients connect to with a ticket: a WebSocket, or server-sent events.
 package socket
 
 import (
@@ -37,39 +37,21 @@ type Handler struct {
 	Tickets *ticket.Verifier
 	Now     func() time.Time
 	Errors  *errreport.Reporter
+	// streams are the open server-sent event connections, by connection id.
+	streams streams
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("vsn") != Protocol {
-		http.Error(w, "vsn must be "+Protocol, http.StatusBadRequest)
-		return
-	}
-	t, err := h.Tickets.Verify(r.URL.Query().Get("ticket"))
-	if err != nil {
-		http.Error(w, "invalid ticket", http.StatusUnauthorized)
+	t, app, ok := h.ticketApp(w, r)
+	if !ok {
 		return
 	}
 	defer h.Errors.Recover(t.App)
-	// A reload may have removed the app since its ticket was verified.
-	app, ok := h.Hub.App(t.App)
-	if !ok {
-		http.Error(w, "invalid ticket", http.StatusUnauthorized)
-		return
-	}
 	writeCtx, abort := context.WithCancel(context.WithoutCancel(r.Context()))
 	defer abort()
 	out := newSink(abort)
-	conn, err := app.Register(t, out, h.Now())
-	if errors.Is(err, hub.ErrFull) {
-		http.Error(w, "connection limit reached", http.StatusServiceUnavailable)
-		return
-	}
-	if errors.Is(err, hub.ErrSessionClosed) || errors.Is(err, hub.ErrAppRemoved) {
-		http.Error(w, "invalid ticket", http.StatusUnauthorized)
-		return
-	}
-	if errors.Is(err, hub.ErrTooManyChannels) {
-		http.Error(w, "too many channels", http.StatusBadRequest)
+	conn, ok := h.register(w, app, t, out)
+	if !ok {
 		return
 	}
 	defer app.Unregister(conn)
@@ -85,6 +67,44 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	h.read(r.Context(), ws, &session{app: app, conn: conn, out: out, now: h.Now})
 	<-written
+}
+
+// ticketApp checks the protocol version and the ticket, and finds its app. It has answered when ok is false.
+func (h *Handler) ticketApp(w http.ResponseWriter, r *http.Request) (ticket.Ticket, *hub.App, bool) {
+	if r.URL.Query().Get("vsn") != Protocol {
+		http.Error(w, "vsn must be "+Protocol, http.StatusBadRequest)
+		return ticket.Ticket{}, nil, false
+	}
+	t, err := h.Tickets.Verify(r.URL.Query().Get("ticket"))
+	if err != nil {
+		http.Error(w, "invalid ticket", http.StatusUnauthorized)
+		return ticket.Ticket{}, nil, false
+	}
+	// A reload may have removed the app since its ticket was verified.
+	app, ok := h.Hub.App(t.App)
+	if !ok {
+		http.Error(w, "invalid ticket", http.StatusUnauthorized)
+		return ticket.Ticket{}, nil, false
+	}
+	return t, app, true
+}
+
+// register adds the connection to its app. It has answered when ok is false.
+func (h *Handler) register(w http.ResponseWriter, app *hub.App, t ticket.Ticket, out *sink) (*hub.Conn, bool) {
+	conn, err := app.Register(t, out, h.Now())
+	if errors.Is(err, hub.ErrFull) {
+		http.Error(w, "connection limit reached", http.StatusServiceUnavailable)
+		return nil, false
+	}
+	if errors.Is(err, hub.ErrSessionClosed) || errors.Is(err, hub.ErrAppRemoved) {
+		http.Error(w, "invalid ticket", http.StatusUnauthorized)
+		return nil, false
+	}
+	if errors.Is(err, hub.ErrTooManyChannels) {
+		http.Error(w, "too many channels", http.StatusBadRequest)
+		return nil, false
+	}
+	return conn, true
 }
 
 // read handles frames until the socket closes or sends something that is not a Phoenix V2 text frame.
