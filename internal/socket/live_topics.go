@@ -47,7 +47,7 @@ func newLiveTopics(out *sink) *liveTopics {
 }
 
 // liveTopic is one joined live query: the target of its registration. Its registration and timer are guarded by the
-// topics' mutex.
+// topics' mutex, under which it also sends its frames, so a topic that left or was replaced gets none after.
 type liveTopic struct {
 	topics  *liveTopics
 	topic   string
@@ -149,8 +149,13 @@ func (t *liveTopic) closeFrame(reason string) []byte {
 		Payload: payload})
 }
 
-// Change sends a matched change, as the service shaped it, its cursor included.
+// Change sends a matched change, as the service shaped it, its cursor included. A topic left meanwhile gets none.
 func (t *liveTopic) Change(entry json.RawMessage) {
+	t.topics.mu.Lock()
+	defer t.topics.mu.Unlock()
+	if t.topics.byTopic[t.topic] != t {
+		return
+	}
 	t.topics.out.Send(phoenix.Encode(phoenix.Frame{JoinRef: t.joinRef, Topic: t.topic, Event: Change,
 		Payload: entry}))
 }
@@ -165,6 +170,11 @@ func (t *liveTopic) End(reason string) {
 // Lost tells the client the topic errored, so a Phoenix client joins it again. The registration stays, and is
 // registered again from its last cursor once the service is back.
 func (t *liveTopic) Lost() {
+	t.topics.mu.Lock()
+	defer t.topics.mu.Unlock()
+	if t.topics.byTopic[t.topic] != t {
+		return
+	}
 	t.topics.out.Send(phoenix.Encode(phoenix.Frame{JoinRef: t.joinRef, Ref: t.joinRef, Topic: t.topic,
 		Event: phoenix.Error}))
 }
