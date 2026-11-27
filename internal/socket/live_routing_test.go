@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/PrototeamHQ/protobase-realtime/internal/changes"
 	"github.com/PrototeamHQ/protobase-realtime/internal/changes/changestest"
 	"github.com/PrototeamHQ/protobase-realtime/internal/config"
@@ -237,8 +239,12 @@ func TestALiveJoinIsRefusedPastTheLimitOrWithALongCursor(t *testing.T) {
 	if got := exchange(t, s, joinFrame("live:more", token, "")); got != `["1","1","live:more","phx_reply",{"response":{"reason":"too_many_live_queries"},"status":"error"}]` {
 		t.Fatalf("got %s", got)
 	}
-	// A join on a joined topic replaces it, so it is no new live query.
+	// A join on a joined topic replaces it, so it is no new live query, but it counts against the rate.
+	s.live.joins = rate.NewLimiter(rate.Every(time.Hour), 1)
 	if got := exchange(t, s, joinFrame("live:q0", token, "")); got != okReply("live:q0") {
+		t.Fatalf("got %s", got)
+	}
+	if got := exchange(t, s, joinFrame("live:q0", token, "")); got != `["1","1","live:q0","phx_reply",{"response":{"reason":"rate_limited"},"status":"error"}]` {
 		t.Fatalf("got %s", got)
 	}
 }

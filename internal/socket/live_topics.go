@@ -5,12 +5,22 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/PrototeamHQ/protobase-realtime/internal/changes"
+	"github.com/PrototeamHQ/protobase-realtime/internal/hub"
 	"github.com/PrototeamHQ/protobase-realtime/internal/phoenix"
 )
 
 // maxLiveTopics bounds the live queries one socket holds, as each is a registration with the changes service.
 const maxLiveTopics = 100
+
+// Live joins one socket may make: a page that opens with every query it holds at once, then a few a second, so one
+// socket cannot flood the connection every app shares with the service.
+const (
+	liveJoinsPerSecond = 10
+	liveJoinBurst      = maxLiveTopics
+)
 
 // Change is the event a live query's matched change arrives under.
 const Change = "change"
@@ -22,7 +32,8 @@ const closedExpired = "expired"
 // liveTopics are a socket's live queries, each registered with the app's changes service until the topic leaves,
 // closes or the socket ends.
 type liveTopics struct {
-	out *sink
+	out   *sink
+	joins *rate.Limiter
 
 	mu      sync.Mutex
 	byTopic map[string]*liveTopic
@@ -31,7 +42,8 @@ type liveTopics struct {
 }
 
 func newLiveTopics(out *sink) *liveTopics {
-	return &liveTopics{out: out, byTopic: map[string]*liveTopic{}}
+	return &liveTopics{out: out, joins: rate.NewLimiter(liveJoinsPerSecond, liveJoinBurst),
+		byTopic: map[string]*liveTopic{}}
 }
 
 // liveTopic is one joined live query: the target of its registration. Its registration and timer are guarded by the
@@ -55,6 +67,10 @@ func (l *liveTopics) join(f phoenix.Frame, app string, client *changes.Client, s
 	old := l.byTopic[f.Topic]
 	if old == nil && len(l.byTopic) >= maxLiveTopics {
 		l.out.Send(phoenix.Refuse(f, refusedTooMany))
+		return
+	}
+	if !l.joins.Allow() {
+		l.out.Send(phoenix.Refuse(f, hub.RefusedRate))
 		return
 	}
 	if old != nil {
