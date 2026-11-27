@@ -69,6 +69,8 @@ jobs:
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes \
             "${prerelease[@]}" "$RUNNER_TEMP"/release/*
 
+  # The one grant beyond the release's own: image.yml's publish job pushes to ghcr.io with the token its caller grants,
+  # the same packages: write it holds on a tag push. Only this job, on a run by hand, holds it.
   image:
     needs: tag
     if: github.event_name == 'workflow_dispatch'
