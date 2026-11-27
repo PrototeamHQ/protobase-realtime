@@ -1,16 +1,47 @@
 # Pushing a tag v1.2.3 creates the GitHub release v1.2.3 with the relay for every platform and SHA256SUMS attached
 # (scripts/build-release.sh); a tag with a prerelease part, such as v1.3.0-rc.1, makes a prerelease.
+# Running it by hand on main with a version creates that tag at main's head first (scripts/create-release-tag.sh),
+# then releases it and publishes its container image: a tag the workflow's own token creates starts no other workflow.
 name: release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The new tag to release, such as v1.2.3.
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  tag:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Refuse a branch other than main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Releases are cut from main, not $GITHUB_REF" >&2
+          exit 1
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Create the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version }}
+        run: scripts/create-release-tag.sh "$TAG" "$GITHUB_SHA"
+
   release:
+    needs: tag
+    # A tag push skips the tag job; a dispatch releases only once it created the tag.
+    if: ${{ !cancelled() && (needs.tag.result == 'success' || needs.tag.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,7 +54,7 @@ jobs:
           go-version-file: go.mod
       - name: Build the assets
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.version || github.ref_name }}
         run: scripts/build-release.sh "${TAG#v}" "$RUNNER_TEMP/release"
       - name: Check the checksums
         working-directory: ${{ runner.temp }}/release
@@ -31,9 +62,19 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.version || github.ref_name }}
         run: |
           prerelease=()
           case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes \
             "${prerelease[@]}" "$RUNNER_TEMP"/release/*
+
+  image:
+    needs: tag
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image.yml
+    with:
+      tag: ${{ inputs.version }}
