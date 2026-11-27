@@ -27,12 +27,17 @@ type App struct {
 	ClientEvents *ClientEvents `json:"client_events"`
 	Presence     *Presence     `json:"presence"`
 	Limits       Limits        `json:"limits"`
+	// Changes names the changes service the app's live queries register with; without one they get no changes.
+	Changes string `json:"changes"`
+	// ChangesService is the service Changes names, set when the file loads.
+	ChangesService *ChangesService `json:"-"`
 }
 
 // File is the apps file. Apps is a pointer so a file without the key is told apart from one that lists no apps,
 // which is valid: the relay then serves no app.
 type File struct {
-	Apps *[]App `json:"apps"`
+	Apps    *[]App           `json:"apps"`
+	Changes []ChangesService `json:"changes"`
 }
 
 const minKeyLength = 32
@@ -68,6 +73,9 @@ func Parse(raw []byte) ([]App, error) {
 			return nil, fmt.Errorf("apps file: app %q is listed twice", app.ID)
 		}
 		ids[app.ID] = true
+	}
+	if err := resolveChanges(file.Changes, apps); err != nil {
+		return nil, err
 	}
 	return apps, nil
 }
