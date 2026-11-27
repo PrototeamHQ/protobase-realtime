@@ -254,3 +254,16 @@ func TestARefusedKeyIsToldWithoutTheURL(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestAReconnectRegistersMoreThanTheQueueHoldsWithoutDropping(t *testing.T) {
+	c := New("main", "ws://127.0.0.1:1/relay", changestest.Key, func(error) {})
+	g := newTarget(t)
+	for range queueLength + 1 {
+		mustRegister(t, c, changestest.App, Start{}, g)
+	}
+	dropped := false
+	replay := c.attach(make(chan []byte, queueLength), func() { dropped = true })
+	if dropped || len(replay) != queueLength+1 {
+		t.Fatalf("dropped %v, replayed %d", dropped, len(replay))
+	}
+}

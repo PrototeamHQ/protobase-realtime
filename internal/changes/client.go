@@ -129,12 +129,12 @@ func (c *Client) connect(ctx context.Context) (healthy bool, err error) {
 	connCtx, drop := context.WithCancel(ctx)
 	defer drop()
 	out := make(chan []byte, queueLength)
+	replay := c.attach(out, drop)
 	written := make(chan struct{})
 	go func() {
 		defer close(written)
-		write(connCtx, ws, out, drop)
+		write(connCtx, ws, replay, out, drop)
 	}()
-	c.attach(out, drop)
 	err = c.read(connCtx, ws)
 	drop()
 	<-written
@@ -164,15 +164,19 @@ func (c *Client) dial(ctx context.Context) (*websocket.Conn, error) {
 	return ws, nil
 }
 
-// attach makes a new connection the current one and registers every registration on it, from its last cursor.
-func (c *Client) attach(out chan []byte, drop context.CancelFunc) {
+// attach makes a new connection the current one and returns the register of every registration, from its last
+// cursor. They are written before anything queued, so the queue's bound applies only to new traffic and an unregister
+// never goes before its register.
+func (c *Client) attach(out chan []byte, drop context.CancelFunc) [][]byte {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.out, c.drop = out, drop
+	replay := make([][]byte, 0, len(c.regs))
 	for _, r := range c.regs {
-		c.send(registerMessage(r.app, r.id, r.start))
+		replay = append(replay, registerMessage(r.app, r.id, r.start))
 		r.sent, r.lost = true, false
 	}
+	return replay
 }
 
 // detach forgets a dropped connection and returns the targets of the registrations it held.
@@ -190,7 +194,14 @@ func (c *Client) detach() []Target {
 	return held
 }
 
-func write(ctx context.Context, ws *websocket.Conn, out <-chan []byte, drop context.CancelFunc) {
+// write writes replay, then the queue, until ctx ends or a write fails.
+func write(ctx context.Context, ws *websocket.Conn, replay [][]byte, out <-chan []byte, drop context.CancelFunc) {
+	for _, msg := range replay {
+		if ws.Write(ctx, websocket.MessageText, msg) != nil {
+			drop()
+			return
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
