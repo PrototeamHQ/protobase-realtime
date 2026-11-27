@@ -46,7 +46,10 @@ func (h *Handler) ServeEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer app.Unregister(conn)
-	st := h.streams.open(&session{app: app, conn: conn, out: out, now: h.Now})
+	sess := &session{app: app, conn: conn, out: out, now: h.Now, changes: h.Changes, live: newLiveTopics(out)}
+	// The stream's live queries end with it, once no more frames reach the session.
+	defer sess.live.end()
+	st := h.streams.open(sess)
 	defer h.streams.forget(st)
 
 	w.Header().Set("Content-Type", "text/event-stream")

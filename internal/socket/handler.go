@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/PrototeamHQ/protobase-realtime/internal/changes"
 	"github.com/PrototeamHQ/protobase-realtime/internal/errreport"
 	"github.com/PrototeamHQ/protobase-realtime/internal/hub"
 	"github.com/PrototeamHQ/protobase-realtime/internal/phoenix"
@@ -37,6 +38,8 @@ type Handler struct {
 	Tickets *ticket.Verifier
 	Now     func() time.Time
 	Errors  *errreport.Reporter
+	// Changes finds a changes service's client by id, nil when there is none.
+	Changes func(service string) *changes.Client
 	// streams are the open server-sent event connections, by connection id.
 	streams streams
 }
@@ -65,7 +68,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer h.Errors.Contain(t.App, func() { _ = ws.CloseNow() })
 		out.write(writeCtx, ws)
 	}()
-	h.read(r.Context(), ws, &session{app: app, conn: conn, out: out, now: h.Now})
+	s := &session{app: app, conn: conn, out: out, now: h.Now, changes: h.Changes, live: newLiveTopics(out)}
+	h.read(r.Context(), ws, s)
+	// The socket's live queries end with it, however it closed.
+	s.live.end()
 	<-written
 }
 

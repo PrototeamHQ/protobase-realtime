@@ -50,13 +50,13 @@ func TestKeyMatchesTheIssuersDerivation(t *testing.T) {
 
 func TestOpensTheIssuersTokens(t *testing.T) {
 	s := readSealed(t)
-	if err := Open(s.Person, []string{s.TicketKey}, person, issuedAt); err != nil {
+	if _, err := Open(s.Person, []string{s.TicketKey}, person, issuedAt); err != nil {
 		t.Errorf("person: %v", err)
 	}
-	if err := Open(s.Visitor, []string{s.TicketKey}, visitor, issuedAt); err != nil {
+	if _, err := Open(s.Visitor, []string{s.TicketKey}, visitor, issuedAt); err != nil {
 		t.Errorf("visitor: %v", err)
 	}
-	if err := Open(s.Person, []string{otherKey, s.TicketKey}, person, issuedAt); err != nil {
+	if _, err := Open(s.Person, []string{otherKey, s.TicketKey}, person, issuedAt); err != nil {
 		t.Errorf("person under the second key: %v", err)
 	}
 }
@@ -82,7 +82,7 @@ func TestRefusesTokensNotForTheSocket(t *testing.T) {
 		{"not a token", "not-a-token", keys, person, issuedAt},
 	}
 	for _, c := range cases {
-		if err := Open(c.token, c.keys, c.socket, c.now); err != ErrInvalid {
+		if _, err := Open(c.token, c.keys, c.socket, c.now); err != ErrInvalid {
 			t.Errorf("%s: %v, want ErrInvalid", c.name, err)
 		}
 	}
@@ -106,7 +106,7 @@ func TestRefusesMalformedClaims(t *testing.T) {
 	key := Key(otherKey)
 	exp := expiresAt.Unix()
 	whole := seal(t, key, jose.A256GCM, map[string]any{"iss": "chat", "sub": "u1", "sid": "s1", "exp": exp})
-	if err := Open(whole, []string{otherKey}, person, issuedAt); err != nil {
+	if _, err := Open(whole, []string{otherKey}, person, issuedAt); err != nil {
 		t.Fatalf("a whole token: %v", err)
 	}
 	cases := []struct {
@@ -122,7 +122,7 @@ func TestRefusesMalformedClaims(t *testing.T) {
 	}
 	for _, c := range cases {
 		token := seal(t, key, jose.A256GCM, c.claims)
-		if err := Open(token, []string{otherKey}, c.socket, issuedAt); err != ErrInvalid {
+		if _, err := Open(token, []string{otherKey}, c.socket, issuedAt); err != ErrInvalid {
 			t.Errorf("%s: %v, want ErrInvalid", c.name, err)
 		}
 	}
@@ -131,7 +131,36 @@ func TestRefusesMalformedClaims(t *testing.T) {
 func TestRefusesAnotherContentEncryption(t *testing.T) {
 	key := Key(otherKey)[:16]
 	token := seal(t, key, jose.A128GCM, map[string]any{"iss": "chat", "sub": "u1", "sid": "s1", "exp": expiresAt.Unix()})
-	if err := Open(token, []string{otherKey}, person, issuedAt); err != ErrInvalid {
+	if _, err := Open(token, []string{otherKey}, person, issuedAt); err != ErrInvalid {
 		t.Fatalf("%v, want ErrInvalid", err)
+	}
+}
+
+func TestOpenReturnsTheReadUnread(t *testing.T) {
+	key := Key(otherKey)
+	subs := []map[string]any{{"resource": "messages", "where": map[string]any{"eq": []any{"channel_id", "xyz"}}}}
+	token := seal(t, key, jose.A256GCM, map[string]any{"iss": "chat", "sub": "u1", "sid": "s1", "exp": expiresAt.Unix(),
+		"subs": subs, "fields": []string{"body"}, "snapshot": "894:896:894"})
+	read, err := Open(token, []string{otherKey}, person, issuedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(read.Subs) != `[{"resource":"messages","where":{"eq":["channel_id","xyz"]}}]` ||
+		string(read.Fields) != `["body"]` || string(read.Snapshot) != `"894:896:894"` {
+		t.Fatalf("got %s %s %s", read.Subs, read.Fields, read.Snapshot)
+	}
+	if read.Session != "s1" || read.Anonymous || !read.Expiry.Equal(expiresAt) {
+		t.Fatalf("got %+v", read)
+	}
+}
+
+func TestOpenTellsAVisitorsRead(t *testing.T) {
+	s := readSealed(t)
+	read, err := Open(s.Visitor, []string{s.TicketKey}, visitor, issuedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !read.Anonymous || read.Session != "" || !read.Expiry.Equal(expiresAt) {
+		t.Fatalf("got %+v", read)
 	}
 }

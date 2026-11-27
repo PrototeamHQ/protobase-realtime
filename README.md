@@ -77,10 +77,11 @@ See [Presence reports](#presence-reports).
   A join is answered from the person's channel list; clients never manage membership.
 - **Tickets.** A client connects with a short-lived, single-use ticket the app issues. It names the person or an
   anonymous session, their sign-in session and the channels they belong to. The connection is the session: there is
-  no token refresh, and the relay keeps no expiry timers. A socket ends when the client leaves or the app closes it.
+  no token refresh, and the relay keeps no expiry timers for sockets. A socket ends when the client leaves or the app
+  closes it.
 - **Interest.** A client may say what it views in a channel; that only narrows delivery, never grants anything.
 - **Nothing kept.** No history, no replay, no database, no app logic. The only timers and retries the relay runs are
-  those of presence reports.
+  those of presence reports, the expiry of live tokens and the reconnects to changes services.
 
 <gap>Clients behind proxies that block WebSockets cannot connect because a server-sent events transport is not implemented.</gap>
 <gap>The relay cannot run as several instances sharing connections because clustering is not implemented.</gap>
@@ -130,8 +131,12 @@ serves one app, `chat`, and the list after it explains each field.
         }
       },
       "presence": { "url": "https://chat.example.com/relay/presence", "key": "at least 32 characters", "grace_seconds": 30 },
+      "changes": "main",
       "limits": { "connections": 10000, "channels_per_ticket": 200, "request_bytes": 65536 }
     }
+  ],
+  "changes": [
+    { "id": "main", "url": "wss://changes.internal/relay", "key_file": "/run/secrets/relay_key" }
   ]
 }
 ```
@@ -154,8 +159,20 @@ serves one app, `chat`, and the list after it explains each field.
     nothing its clients send.
 - `presence` (optional): turns on presence reports (see below). `url` receives them, with `key` as the bearer token;
   `grace_seconds` (0 to 3600) is how long a person who closed their last socket still counts as present.
+- `changes` (optional): the id of the changes service the app's [live queries](#live-queries) register with; without
+  it, live joins get `changes_unavailable`.
 - `limits.connections`: open sockets for the app; `channels_per_ticket`: channels one ticket may list;
   `request_bytes`: the largest app command body.
+
+The top-level `changes` (optional) lists the protobase-changes services live queries register with:
+
+- `id`: 1 to 64 of `a-z`, `0-9`, `_` and `-`, as apps name it.
+- `url`: the service's `GET /relay` endpoint, a `ws` or `wss` URL.
+- `key_file`: a file holding the relay key, 32 bytes as base64url without padding, that the service lists in
+  `relay_key_files` for each app that names it here. The relay reads it whenever it loads the apps file.
+
+The relay keeps one connection to each service an app names, for all those apps, never one per app. A connection that
+fails is tried again as presence reports are, after a second, then twice as long each time, up to a minute.
 
 The relay reads the file at startup. It rejects unknown fields and a file without an `apps` key. An empty list,
 `{"apps": []}`, is valid: the relay then serves no app, so it can start before the first app exists and keep running
@@ -164,7 +181,8 @@ after the last one is gone.
 On `SIGHUP` the relay reads the file again and swaps in the whole new version, without a restart. The relay does not
 watch the file and has no API for configuration, so a changed file takes effect only when the relay gets `SIGHUP`, for
 example with `kill -HUP <pid>`. Apps that are still listed keep their sockets, channels and presence, and use changed
-keys, origins, client events, presence and limits from the next event on. A lower `limits.connections` only applies to
+keys, origins, client events, presence and limits from the next event on. A changes service whose `url` or key changed,
+or that no app names any longer, is disconnected, and its live topics get `phx_error`. A lower `limits.connections` only applies to
 new sockets. Sockets of a removed app close with 1000. If the new file fails to load, the relay rejects it, keeps
 serving the apps it had and writes the reason to stderr.
 
@@ -185,7 +203,9 @@ that does not parse stops startup. It reports:
 
 - an apps file that fails to load, at startup or on `SIGHUP`;
 - a panic in a socket or an app command, after which that socket or request ends and the relay serves on;
-- an app's presence report that still fails after the relay waited a full minute, once until a report succeeds again.
+- an app's presence report that still fails after the relay waited a full minute, once until a report succeeds again;
+- a connection to a changes service that still fails after the relay waited a full minute, once until one succeeds
+  again.
 
 An event holds the error, its stack, the app id as the `app` tag, the relay's version as the release, and the host and
 Go runtime. It never holds a request, its headers or query string, a user, a ticket, a key or a payload.
@@ -396,15 +416,49 @@ The token is a JWE (`dir`, `A256GCM`) sealed with a key derived from one of the 
 the key, without salt, with the info `protobase live token`. The relay opens it and checks that `iss` is the socket's
 app and that `exp` lies ahead. A person's token must name the socket's person in `sub` and its sign-in session in
 `sid`, so a copied token is useless on another socket. A visitor's token has `anonymous: true`, no `sub` and no `sid`,
-and joins only on an anonymous socket. A session the app closes loses its sockets, and with them their live queries.
-The read's conditions in the token are not the relay's to read.
+and joins only on an anonymous socket. The read's `subs`, `fields` and `snapshot` are not the relay's to read: it
+passes them on to the app's changes service as they are.
 
-| Reason                | When                                                              |
-| --------------------- | ----------------------------------------------------------------- |
-| `invalid_live_token`  | The payload holds no token, or the token does not open or is not for this socket. |
-| `changes_unavailable` | The token is valid, but the relay routes no changes yet.          |
+An accepted join answers `ok` and registers the query with the app's changes service, from the read's `snapshot`, or,
+when the join gives a `cursor`, after that cursor:
 
-<gap>Live queries cannot receive changes because routing matched changes from protobase-changes is not implemented.</gap>
+```json
+["3", "3", "live:messages-1", "phx_join", { "live": "eyJhbGciOiJkaXIi...", "cursor": "1r-yly3RT3ZH..." }]
+```
+
+Each change the query matches arrives on its topic, one frame per transaction, with the entry as the changes service
+shaped it. Its `cursor` is where the query resumes after it:
+
+```json
+["3", null, "live:messages-1", "change", { "id": "Zk3...", "cursor": "6i0cBOQCb9Jo...", "changes": [
+  { "resource": "messages", "operation": "insert", "key": { "id": "2" }, "new": { "body": "two" },
+    "subscriptions": [{ "id": 0, "effect": "enter" }] }] }]
+```
+
+`id` is the relay's own id of the registration. A topic ends in one of these ways:
+
+| How                                    | The client gets                                     | Then                                         |
+| -------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
+| The client leaves, or its socket closes, also by `sessions/close` | nothing more                 | The query is unregistered.                    |
+| The token's `exp` passes               | `phx_close` `{"reason": "expired"}`                 | Join again with a fresh token and the last cursor. |
+| The service no longer holds every change since the start | `phx_close` `{"reason": "gap"}`   | Read again, and join with the new token.     |
+| The app revoked the token's session    | `phx_close` `{"reason": "revoked"}`                 | The query is over.                           |
+| The service refused the registration   | `phx_close` `{"reason": "refused"}`                 | Read again; a fresh token may be accepted.   |
+| The connection to the service dropped  | `phx_error`                                         | The relay registers the query again after its last cursor once the service is back. |
+
+On `phx_error` a Phoenix client joins the topic again with the same params; a join replaces the topic's registration,
+so make the params a function that returns the last cursor beside the token. A join on a topic already joined replaces
+its query in the same way.
+
+A join is refused with one of these reasons:
+
+| Reason                  | When                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `invalid_live_token`    | The payload holds no token, or the token does not open or is not for this socket. |
+| `invalid_cursor`        | The cursor is longer than 512 bytes.                                            |
+| `changes_unavailable`   | The token is valid, but the app names no changes service.                      |
+| `too_many_live_queries` | The socket holds 100 live topics already.                                       |
+| `rate_limited`          | The socket joined live topics more often than 10 a second, in bursts of 100.    |
 
 ### Server-sent events
 
@@ -430,7 +484,9 @@ go vet ./... && go test ./...
 ```
 
 Unit tests sit next to the code; `tests/` holds the integration tests, which serve the relay and connect real
-WebSocket clients, phoenix.js among them, and server-sent event clients.
+WebSocket clients, phoenix.js among them, and server-sent event clients. Live queries are tested against the changes
+service's side of sessions recorded from the real protobase-changes, in [`tests/relay-sessions/`](tests/relay-sessions),
+which say where they came from.
 
 ### Releasing
 

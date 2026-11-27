@@ -1,0 +1,107 @@
+{
+  "frames": [
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "fields": [
+          "body"
+        ],
+        "id": "r1",
+        "sid": "s-r1",
+        "snapshot": "812:814:812",
+        "subs": [
+          {
+            "resource": "pcs_test_040853_414765816"
+          }
+        ],
+        "type": "register"
+      }
+    },
+    {
+      "from": "service",
+      "message": {
+        "specversion": "1.0",
+        "id": "NlX-UHaL-Pw_ATX5Zw4RKA",
+        "source": "https://shop.example",
+        "type": "protobase.changes.transaction",
+        "time": "2026-11-27T04:08:53.549413Z",
+        "datacontenttype": "application/json",
+        "app": "shop",
+        "data": {
+          "registrations": [
+            {
+              "id": "r1",
+              "cursor": "E6NquALBU3XeX-VbgAmpGkAJPBLxVQhwWk_vkLth4bpWaMMqB5gAnJRLeHiGpYjAfw",
+              "changes": [
+                {
+                  "resource": "pcs_test_040853_414765816",
+                  "operation": "insert",
+                  "key": {
+                    "id": "2"
+                  },
+                  "new": {
+                    "body": "in progress"
+                  },
+                  "subscriptions": [
+                    {
+                      "id": 0,
+                      "effect": "enter"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "from": "service",
+      "message": {
+        "specversion": "1.0",
+        "id": "tWax-ZQxiehJP01GinAXMg",
+        "source": "https://shop.example",
+        "type": "protobase.changes.transaction",
+        "time": "2026-11-27T04:08:53.552679Z",
+        "datacontenttype": "application/json",
+        "app": "shop",
+        "data": {
+          "registrations": [
+            {
+              "id": "r1",
+              "cursor": "wCZfGmmdiLxrcK2o4zImy2DKeHOcLJCXt4ohBYiJsW_Kgas5iJ4zDDw6Gn4gKQUlqw",
+              "changes": [
+                {
+                  "resource": "pcs_test_040853_414765816",
+                  "operation": "insert",
+                  "key": {
+                    "id": "3"
+                  },
+                  "new": {
+                    "body": "after"
+                  },
+                  "subscriptions": [
+                    {
+                      "id": 0,
+                      "effect": "enter"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "id": "r1",
+        "type": "unregister"
+      }
+    }
+  ],
+  "session": "register-snapshot"
+}

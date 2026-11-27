@@ -1,4 +1,4 @@
-package presence
+package backoff
 
 import (
 	"testing"
@@ -6,11 +6,11 @@ import (
 )
 
 func TestBackoffDoublesUpToTheCeilingAndTellsOncePastIt(t *testing.T) {
-	var b backoff
+	var b Backoff
 	var waits []time.Duration
 	told := 0
 	for range 10 {
-		wait, tell := b.fail()
+		wait, tell := b.Fail()
 		waits = append(waits, wait)
 		if tell {
 			told++
@@ -28,8 +28,8 @@ func TestBackoffDoublesUpToTheCeilingAndTellsOncePastIt(t *testing.T) {
 	if told != 1 {
 		t.Fatalf("told %d times", told)
 	}
-	b.succeed()
-	if wait, tell := b.fail(); wait != Tick || tell {
+	b.Succeed()
+	if wait, tell := b.Fail(); wait != Min || tell {
 		t.Fatalf("a success did not reset the backoff: %v %v", wait, tell)
 	}
 }

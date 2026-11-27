@@ -26,7 +26,8 @@ func newLiveSession(t *testing.T, user, sid string) *session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &session{app: app, conn: conn, out: out, now: func() time.Time { return time.Unix(100, 0) }}
+	return &session{app: app, conn: conn, out: out, now: func() time.Time { return time.Unix(100, 0) },
+		live: newLiveTopics(out)}
 }
 
 func sealLive(t *testing.T, claims map[string]any) string {
