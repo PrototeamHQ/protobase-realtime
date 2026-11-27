@@ -65,11 +65,20 @@ var (
 // once it is. It unregisters replaces first when it is not nil, and only once the registration is accepted, so a
 // refused one leaves it as it was.
 func (c *Client) Register(app string, start Start, t Target, replaces *Registration) (*Registration, error) {
-	if replaces != nil && replaces.client != c {
-		// The app names another service since; the registration is of no use on the old one either way.
-		replaces.Unregister()
-		replaces = nil
+	if replaces == nil || replaces.client == c {
+		return c.register(app, start, t, replaces)
 	}
+	// The app names another service since: the old registration ends on its own client, once this one is accepted,
+	// so neither client's mutex is held while the other's is taken.
+	r, err := c.register(app, start, t, nil)
+	if err == nil {
+		replaces.Unregister()
+	}
+	return r, err
+}
+
+// register adds a registration and unregisters replaces, a registration of c, in one step under c's mutex.
+func (c *Client) register(app string, start Start, t Target, replaces *Registration) (*Registration, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {

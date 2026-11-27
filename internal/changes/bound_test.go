@@ -102,3 +102,27 @@ func TestAnAppAtItsBoundStillUnregisters(t *testing.T) {
 		t.Fatalf("dropped %v, queued %d", dropped, len(c.out))
 	}
 }
+
+func TestAReplacementOnAnotherServiceEndsTheOldOneOnlyOnceAccepted(t *testing.T) {
+	old := New("old", "ws://127.0.0.1:1/relay", changestest.Key, func(error) {})
+	old.attach(make(chan queued, queueLength), func() {})
+	r := mustRegister(t, old, changestest.App, Start{}, newTarget(t))
+	full := New("full", "ws://127.0.0.1:1/relay", changestest.Key, func(error) {})
+	full.attach(make(chan queued, queueLength), func() {})
+	if _, err := flood(t, full, changestest.App, Start{}, appRegisters); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := full.Register(changestest.App, Start{}, newTarget(t), r); err != ErrBusy {
+		t.Fatalf("got %v", err)
+	}
+	if old.regs[r.key()] != r || len(old.out) != 1 {
+		t.Fatal("a refused replacement ended the old registration")
+	}
+	accepting := New("accepting", "ws://127.0.0.1:1/relay", changestest.Key, func(error) {})
+	if _, err := accepting.Register(changestest.App, Start{}, newTarget(t), r); err != nil {
+		t.Fatal(err)
+	}
+	if old.regs[r.key()] != nil || len(old.out) != 2 {
+		t.Fatal("an accepted replacement kept the old registration")
+	}
+}
