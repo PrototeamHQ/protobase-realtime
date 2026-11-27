@@ -491,15 +491,17 @@ which say where they came from.
 
 ### Releasing
 
-Cutting a release is pushing a tag `vX.Y.Z` from `main`. `.github/workflows/release.yml` then builds every asset with
-`scripts/build-release.sh`, checks them against `SHA256SUMS` and creates the release `vX.Y.Z` with them attached, using
-only the workflow's own token; a tag such as `v1.3.0-rc.1` makes a prerelease. The assets are
+Cutting a release is running `.github/workflows/release.yml` by hand on `main` with the version `vX.Y.Z`, for example
+`gh workflow run release.yml --ref main -f version=v1.2.3`, or pushing that tag from `main`. Run by hand, it refuses a
+version that is not `vX.Y.Z` or whose tag exists, and creates the tag at `main`'s head before it builds anything. Either
+way, it then builds every asset with `scripts/build-release.sh`, checks them against `SHA256SUMS` and creates the
+release `vX.Y.Z` with them attached, using only the workflow's own token; a tag such as `v1.3.0-rc.1` makes a prerelease. The assets are
 `protobase-realtime-<GOOS>-<GOARCH>` (`.exe` on Windows) for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 and
 windows/amd64, plus `SHA256SUMS`, each at
 `https://github.com/PrototeamHQ/protobase-realtime/releases/download/v<version>/<asset>`. Pull requests run the same build and
 check, publishing nothing.
 
-The same tag runs `.github/workflows/image.yml`, which pushes the container image
+A pushed tag runs `.github/workflows/image.yml`, and a release run by hand calls it, which pushes the container image
 `ghcr.io/prototeamhq/protobase-realtime:<version>` for linux/amd64 and linux/arm64 with the workflow's own token and
 refuses a version already published. Running it by hand with an existing tag publishes that tag. Pull requests build
 both platforms, pushing nothing.

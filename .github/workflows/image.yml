@@ -1,13 +1,19 @@
 # Pushing a tag v1.2.3 publishes the container image ghcr.io/prototeamhq/protobase-realtime:1.2.3 for linux/amd64 and
 # linux/arm64, beside the release release.yml creates; a prerelease tag such as v1.3.0-rc.1 publishes 1.3.0-rc.1. No
 # tag is ever `latest`, and a version that is already published is never overwritten. Running it by hand publishes an
-# existing tag, such as one pushed before this workflow existed.
+# existing tag, such as one pushed before this workflow existed; release.yml calls it with the tag it creates by hand.
 name: image
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: The existing tag to publish, such as v1.2.3.
+        required: true
+        type: string
+  workflow_call:
     inputs:
       tag:
         description: The existing tag to publish, such as v1.2.3.
