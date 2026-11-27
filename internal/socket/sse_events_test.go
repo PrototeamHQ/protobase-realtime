@@ -9,7 +9,21 @@ import (
 
 func newEventWriter() (*eventWriter, *bytes.Buffer) {
 	var b bytes.Buffer
-	return &eventWriter{w: &b, flush: func() error { return nil }}, &b
+	return &eventWriter{w: &b, flush: func() error { return nil }, deadline: func(time.Time) error { return nil }}, &b
+}
+
+func TestEventWriterBoundsEachWriteAndThenClearsTheDeadline(t *testing.T) {
+	var deadlines []time.Time
+	events, _ := newEventWriter()
+	events.deadline = func(d time.Time) error {
+		deadlines = append(deadlines, d)
+		return nil
+	}
+	before := time.Now()
+	_ = events.comment()
+	if len(deadlines) != 2 || deadlines[0].Before(before.Add(writeTimeout)) || !deadlines[1].IsZero() {
+		t.Fatalf("got deadlines %v", deadlines)
+	}
 }
 
 func TestEventWriterPutsEachLineOnADataLine(t *testing.T) {

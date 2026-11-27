@@ -21,6 +21,9 @@ const (
 // keepAlive is how often a stream gets a comment line, so proxies do not close it while it is idle.
 const keepAlive = 25 * time.Second
 
+// writeTimeout bounds one event's write and flush, so a client that stopped reading cannot hold its stream open.
+const writeTimeout = 10 * time.Second
+
 type connectionData struct {
 	Connection string `json:"connection"`
 	Secret     string `json:"secret"`
@@ -35,6 +38,9 @@ type closeData struct {
 type eventWriter struct {
 	w     io.Writer
 	flush func() error
+	// deadline sets the write deadline; the zero time clears it. A server that cannot set deadlines leaves each
+	// write to fail on its own.
+	deadline func(time.Time) error
 }
 
 // event writes one event, unnamed when name is empty, with each line of data on a data line of its own.
@@ -62,11 +68,17 @@ func (e *eventWriter) json(name string, v any) error {
 	return e.event(name, raw)
 }
 
+// write writes and flushes b within writeTimeout, then clears the deadline so an idle stream stays open.
 func (e *eventWriter) write(b []byte) error {
+	_ = e.deadline(time.Now().Add(writeTimeout))
 	if _, err := e.w.Write(b); err != nil {
 		return err
 	}
-	return e.flush()
+	if err := e.flush(); err != nil {
+		return err
+	}
+	_ = e.deadline(time.Time{})
+	return nil
 }
 
 // stream writes the sink's frames as events until the sink ends or ctx does, as when the client goes. A final

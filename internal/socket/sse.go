@@ -54,7 +54,7 @@ func (h *Handler) ServeEvents(w http.ResponseWriter, r *http.Request) {
 	// nginx would otherwise buffer the stream.
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	events := &eventWriter{w: w, flush: rc.Flush}
+	events := &eventWriter{w: w, flush: rc.Flush, deadline: rc.SetWriteDeadline}
 	if events.json(ConnectionEvent, connectionData{st.id, st.secret}) != nil {
 		return
 	}
