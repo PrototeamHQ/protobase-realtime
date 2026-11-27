@@ -381,6 +381,22 @@ reply with one of these reasons, and a refused event reaches nobody:
 
 An event that fails its schema still counts against the rate, so a flood of invalid events stays cheap.
 
+### Server-sent events
+
+A client behind a proxy that blocks WebSockets connects over server-sent events instead, with the same frames, ticket,
+origins and limits. Stock phoenix.js has no such transport; protobase's client brings one.
+
+1. `GET /socket/sse?vsn=2.0.0&ticket=<ticket>` with `Accept: text/event-stream` opens the stream. Its first event is
+   `connection`, `{"connection": "<id>", "secret": "<secret>"}`. Each frame from the relay then comes as one unnamed
+   event, and a comment line comes every 25 seconds so proxies keep the stream open.
+2. `POST /socket/sse/<id>` with the secret in `X-Connection-Secret` sends one frame, or a JSON array of frames, and
+   answers `204`. A wrong secret or an unknown id gets `404`, a body over the socket's frame limit `413`, and a malformed
+   frame `400`, which also ends the stream.
+3. A close the client takes as final ends the stream with a `close` event, `{"code": 1000, "reason": "..."}`. Any other
+   ending only ends the stream, and the client reconnects with a new ticket.
+
+`tests/testdata/sse-stream.txt` is a stream recorded by the integration tests, for client transports to replay.
+
 ## Development
 
 ```sh
@@ -389,7 +405,7 @@ go vet ./... && go test ./...
 ```
 
 Unit tests sit next to the code; `tests/` holds the integration tests, which serve the relay and connect real
-WebSocket clients, phoenix.js among them.
+WebSocket clients, phoenix.js among them, and server-sent event clients.
 
 
 ### Releasing
