@@ -87,6 +87,7 @@ See [Presence reports](#presence-reports).
 <gap>The relay cannot run as several instances sharing connections because clustering is not implemented.</gap>
 <gap>The relay cannot drop a half-open connection that never sends again because liveness checks are not implemented.</gap>
 <gap>The relay cannot report per-app message counts because metrics are not implemented.</gap>
+<gap>Many apps flooding live joins together can still drop the changes connection they share because the changes service cannot refuse one app's registers without blocking the others, which is not implemented.</gap>
 
 ## Running
 
@@ -458,7 +459,7 @@ A join is refused with one of these reasons:
 | `invalid_cursor`        | The cursor is longer than 512 bytes.                                            |
 | `changes_unavailable`   | The token is valid, but the app names no changes service.                      |
 | `too_many_live_queries` | The socket holds 100 live topics already.                                       |
-| `rate_limited`          | The socket joined live topics more often than 10 a second, in bursts of 100.    |
+| `rate_limited`          | The socket joined live topics more often than 10 a second, in bursts of 100, or 1024 of the app's live queries still wait to reach its changes service. A topic already joined keeps its query. |
 
 ### Server-sent events
 
