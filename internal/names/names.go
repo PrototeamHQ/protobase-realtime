@@ -16,6 +16,8 @@ const (
 	RelayTopic = "relay"
 	// SystemTopic is the Phoenix protocol's own topic, which carries heartbeats.
 	SystemTopic = "phoenix"
+	// LivePrefix starts the topics of live queries: a client joins one per query with the live token of its read.
+	LivePrefix = "live:"
 
 	maxEventLen = 64
 )
@@ -36,5 +38,10 @@ func ValidEvent(event string) bool {
 
 // ReservedTopic reports whether a topic belongs to the protocol or the relay, so it is never an app's channel.
 func ReservedTopic(topic string) bool {
-	return topic == RelayTopic || topic == SystemTopic
+	return topic == RelayTopic || topic == SystemTopic || LiveTopic(topic)
+}
+
+// LiveTopic reports whether a topic is a live query's.
+func LiveTopic(topic string) bool {
+	return strings.HasPrefix(topic, LivePrefix)
 }

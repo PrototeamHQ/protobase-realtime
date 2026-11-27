@@ -27,6 +27,8 @@ func (s *session) handle(f phoenix.Frame) {
 		s.out.Send(phoenix.Ok(f))
 	case f.Topic == names.RelayTopic && f.Event == phoenix.Join:
 		s.joinRelay(f)
+	case names.LiveTopic(f.Topic) && f.Event == phoenix.Join:
+		s.joinLive(f)
 	case f.Event == phoenix.Join:
 		s.join(f)
 	case !s.app.IsJoined(s.conn, f.Topic):

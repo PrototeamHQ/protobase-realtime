@@ -11,8 +11,8 @@ var at = time.UnixMilli(1_800_000_000_123)
 
 func TestRelayStampsTheVerifiedSender(t *testing.T) {
 	a := testApp("a", allowAny)
-	sender, senderSink := connect(t, a, "u1", "s1", "room")
-	sibling, siblingSink := connect(t, a, "u1", "s1", "room")
+	sender, senderSink := connect(t, a, "u1", "session 1", "room")
+	sibling, siblingSink := connect(t, a, "u1", "session 1", "room")
 	other, otherSink := connect(t, a, "u2", "s2", "room")
 	for _, c := range []*Conn{sender, sibling, other} {
 		join(t, a, c, "room")
@@ -32,7 +32,7 @@ func TestRelayStampsTheVerifiedSender(t *testing.T) {
 		env.Channel != "room" || env.At != at.UnixMilli() || env.Event != "typing" || string(env.Payload) != payload {
 		t.Fatalf("got %s", otherSink.frames[0])
 	}
-	if strings.Contains(otherSink.frames[0], "s1") {
+	if strings.Contains(otherSink.frames[0], "session 1") {
 		t.Fatal("the sign-in session leaked")
 	}
 }

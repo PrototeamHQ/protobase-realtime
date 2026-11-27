@@ -82,6 +82,7 @@ See [Presence reports](#presence-reports).
 - **Nothing kept.** No history, no replay, no database, no app logic. The only timers and retries the relay runs are
   those of presence reports.
 
+<gap>Clients behind proxies that block WebSockets cannot connect because a server-sent events transport is not implemented.</gap>
 <gap>The relay cannot run as several instances sharing connections because clustering is not implemented.</gap>
 <gap>The relay cannot drop a half-open connection that never sends again because liveness checks are not implemented.</gap>
 <gap>The relay cannot report per-app message counts because metrics are not implemented.</gap>
@@ -273,7 +274,8 @@ Sends `[null, null, channel, event, payload]`, the same bytes to every socket jo
   `{"sockets": 0, "duplicate": true}`.
 - `users` (optional): only these people's sockets. A direct message goes to a channel every ticket lists, narrowed to
   the recipient.
-- `channel`: 1 to 256 bytes, not `relay` or `phoenix`, the relay's and the protocol's own topics.
+- `channel`: 1 to 256 bytes, not `relay` or `phoenix`, the relay's and the protocol's own topics, and not starting
+  with `live:`, which [live queries](#live-queries) use.
 - `event`: 1 to 64 bytes, not `heartbeat`, `interest`, `presence`, `client_event` or `phx_*`.
 - `payload`: a JSON object.
 - `about` (optional): only sockets that declared no interest, or declared this key.
@@ -343,6 +345,7 @@ Frames are Phoenix V2 JSON text frames, `[join_ref, ref, topic, event, payload]`
 | `interest` `{"viewing": [...]}`      | `ok`; replaces what the socket views in that channel (at most 32 keys of 128 bytes). |
 | any other event on a joined channel  | A channel event, below.                                                       |
 | `phx_join` on `relay`                | `ok` for a signed-in person, else `error` `receive_only`. The relay topic carries direct events and presence. |
+| `phx_join` on `live:<id>` `{"live": "<token>"}` | A live query, below.                                              |
 | `presence` `{"status": "away"}` on `relay` | `ok`; `away` before the client is suspended, `online` when it is back.    |
 | any other event on `relay`, `{"to": "u2", "payload": {...}}` | A direct event, below.                            |
 | anything on a channel not joined     | `error` `unmatched topic`.                                                    |
@@ -378,6 +381,30 @@ reply with one of these reasons, and a refused event reaches nobody:
 | `unreachable`       | The sender shares no channel with the person, or the person has no socket open.    |
 
 An event that fails its schema still counts against the rate, so a flood of invalid events stays cheap.
+
+### Live queries
+
+A page subscribes to what it read on the same socket. A list or record read with `Prefer: live` returns a live token
+in its `Protobase-Live` header, and the client joins a topic of its own choosing that starts with `live:`, one per
+query, with that token:
+
+```json
+["3", "3", "live:messages-1", "phx_join", { "live": "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..." }]
+```
+
+The token is a JWE (`dir`, `A256GCM`) sealed with a key derived from one of the app's ticket keys: HKDF-SHA-256 of
+the key, without salt, with the info `protobase live token`. The relay opens it and checks that `iss` is the socket's
+app and that `exp` lies ahead. A person's token must name the socket's person in `sub` and its sign-in session in
+`sid`, so a copied token is useless on another socket. A visitor's token has `anonymous: true`, no `sub` and no `sid`,
+and joins only on an anonymous socket. A session the app closes loses its sockets, and with them their live queries.
+The read's conditions in the token are not the relay's to read.
+
+| Reason                | When                                                              |
+| --------------------- | ----------------------------------------------------------------- |
+| `invalid_live_token`  | The payload holds no token, or the token does not open or is not for this socket. |
+| `changes_unavailable` | The token is valid, but the relay routes no changes yet.          |
+
+<gap>Live queries cannot receive changes because routing matched changes from protobase-changes is not implemented.</gap>
 
 ## Development
 
