@@ -87,6 +87,7 @@ See [Presence reports](#presence-reports).
 <gap>The relay cannot run as several instances sharing connections because clustering is not implemented.</gap>
 <gap>The relay cannot drop a half-open connection that never sends again because liveness checks are not implemented.</gap>
 <gap>The relay cannot report per-app message counts because metrics are not implemented.</gap>
+<gap>Many apps flooding live joins together can still drop the changes connection they share because the changes service cannot refuse one app's registers without blocking the others, which is not implemented.</gap>
 
 ## Running
 
