@@ -458,7 +458,7 @@ A join is refused with one of these reasons:
 | `invalid_cursor`        | The cursor is longer than 512 bytes.                                            |
 | `changes_unavailable`   | The token is valid, but the app names no changes service.                      |
 | `too_many_live_queries` | The socket holds 100 live topics already.                                       |
-| `rate_limited`          | The socket joined live topics more often than 10 a second, in bursts of 100.    |
+| `rate_limited`          | The socket joined live topics more often than 10 a second, in bursts of 100, or 1024 of the app's live queries still wait to reach its changes service. A topic already joined keeps its query. |
 
 ### Server-sent events
 

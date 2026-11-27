@@ -2,6 +2,7 @@ package socket
 
 import (
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -73,19 +74,29 @@ func (l *liveTopics) join(f phoenix.Frame, app string, client *changes.Client, s
 		l.out.Send(phoenix.Refuse(f, hub.RefusedRate))
 		return
 	}
+	t := &liveTopic{topics: l, topic: f.Topic, joinRef: f.JoinRef}
+	var replaces *changes.Registration
 	if old != nil {
+		replaces = old.reg
+	}
+	// A change reaches the topic only under the topics' mutex, so the reply below still goes before it.
+	reg, err := client.Register(app, start, t, replaces)
+	if errors.Is(err, changes.ErrBusy) {
+		// The app's registrations wait for the service; the joined topic, if any, keeps its own.
+		l.out.Send(phoenix.Refuse(f, hub.RefusedRate))
+		return
+	}
+	if old != nil {
+		// A replaced topic's registration ended in Register; one on a stopped client ends here.
 		old.stop()
 		delete(l.byTopic, f.Topic)
 	}
-	t := &liveTopic{topics: l, topic: f.Topic, joinRef: f.JoinRef}
-	// The reply goes first, so no change arrives on a topic the client has not joined yet.
-	l.out.Send(phoenix.Ok(f))
-	reg, ok := client.Register(app, start, t)
-	if !ok {
+	if err != nil {
 		// A reload stopped the service's client since the join looked it up.
-		l.out.Send(t.closeFrame(refusedNoChanges))
+		l.out.Send(phoenix.Refuse(f, refusedNoChanges))
 		return
 	}
+	l.out.Send(phoenix.Ok(f))
 	t.reg = reg
 	t.expiry = time.AfterFunc(expiresIn, t.expire)
 	l.byTopic[f.Topic] = t

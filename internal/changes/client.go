@@ -15,8 +15,12 @@ import (
 )
 
 const (
-	// queueLength bounds the messages waiting for the service; a service that falls further behind is dropped.
-	queueLength = 1024
+	// appRegisters bounds the registers of one app waiting for the service, as the service holds no more for an app
+	// before it stops reading; an app past it is refused rather than filling the queue every app shares.
+	appRegisters = 1024
+	// queueLength bounds the messages waiting for the service; a service that falls further behind is dropped. It holds
+	// many apps at their bound, so only a service that stops reading fills it.
+	queueLength = 16 * appRegisters
 	// readLimit bounds one message of the service: one transaction's changes for every registration they concern.
 	readLimit = 32 << 20
 	// dialTimeout bounds the handshake.
@@ -36,7 +40,9 @@ type Client struct {
 	mu   sync.Mutex
 	regs map[regKey]*Registration
 	// out is the current connection's queue, nil while there is none.
-	out chan []byte
+	out chan queued
+	// waiting counts each app's registers in out.
+	waiting map[string]int
 	// drop ends the current connection.
 	drop context.CancelFunc
 	// closed is set once the client stops for good.
@@ -47,29 +53,72 @@ func New(id, url, key string, stuck func(error)) *Client {
 	return &Client{ID: id, URL: url, Key: key, Stuck: stuck, regs: map[regKey]*Registration{}}
 }
 
+// Errors of Register.
+var (
+	// ErrStopped refuses a registration once the client stopped.
+	ErrStopped = errors.New("changes: the client stopped")
+	// ErrBusy refuses a registration while the app has appRegisters registers waiting for the service.
+	ErrBusy = errors.New("changes: the app has too many registrations waiting")
+)
+
 // Register adds a registration for one of the app's live queries, sent to the service now when it is connected or
-// once it is. ok is false once the client stopped.
-func (c *Client) Register(app string, start Start, t Target) (*Registration, bool) {
+// once it is. It unregisters replaces first when it is not nil, and only once the registration is accepted, so a
+// refused one leaves it as it was.
+func (c *Client) Register(app string, start Start, t Target, replaces *Registration) (*Registration, error) {
+	if replaces != nil && replaces.client != c {
+		// The app names another service since; the registration is of no use on the old one either way.
+		replaces.Unregister()
+		replaces = nil
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
-		return nil, false
+		return nil, ErrStopped
+	}
+	if c.out != nil && c.waiting[app] >= appRegisters {
+		return nil, ErrBusy
+	}
+	if replaces != nil {
+		replaces.unregisterLocked()
 	}
 	r := &Registration{client: c, app: app, id: newRegistrationID(), start: start, target: t}
 	c.regs[r.key()] = r
 	if c.out != nil {
-		c.send(registerMessage(r.app, r.id, r.start))
+		c.send(queued{app: app, register: true, msg: registerMessage(r.app, r.id, r.start)})
 		r.sent = true
 	}
-	return r, true
+	return r, nil
+}
+
+// queued is a message waiting for the service; a register counts against its app's bound until it is taken.
+type queued struct {
+	app      string
+	register bool
+	msg      []byte
 }
 
 // send queues a message for the current connection, under the mutex. A full queue drops the connection.
-func (c *Client) send(msg []byte) {
+func (c *Client) send(q queued) {
 	select {
-	case c.out <- msg:
+	case c.out <- q:
+		if q.register {
+			c.waiting[q.app]++
+		}
 	default:
 		c.drop()
+	}
+}
+
+// taken counts a message off the queue.
+func (c *Client) taken(q queued) {
+	if !q.register {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.waiting[q.app]--
+	if c.waiting[q.app] == 0 {
+		delete(c.waiting, q.app)
 	}
 }
 
@@ -128,12 +177,12 @@ func (c *Client) connect(ctx context.Context) (healthy bool, err error) {
 	ws.SetReadLimit(readLimit)
 	connCtx, drop := context.WithCancel(ctx)
 	defer drop()
-	out := make(chan []byte, queueLength)
+	out := make(chan queued, queueLength)
 	replay := c.attach(out, drop)
 	written := make(chan struct{})
 	go func() {
 		defer close(written)
-		write(connCtx, ws, replay, out, drop)
+		c.write(connCtx, ws, replay, out, drop)
 	}()
 	err = c.read(connCtx, ws)
 	drop()
@@ -167,10 +216,10 @@ func (c *Client) dial(ctx context.Context) (*websocket.Conn, error) {
 // attach makes a new connection the current one and returns the register of every registration, from its last
 // cursor. They are written before anything queued, so the queue's bound applies only to new traffic and an unregister
 // never goes before its register.
-func (c *Client) attach(out chan []byte, drop context.CancelFunc) [][]byte {
+func (c *Client) attach(out chan queued, drop context.CancelFunc) [][]byte {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.out, c.drop = out, drop
+	c.out, c.drop, c.waiting = out, drop, map[string]int{}
 	replay := make([][]byte, 0, len(c.regs))
 	for _, r := range c.regs {
 		replay = append(replay, registerMessage(r.app, r.id, r.start))
@@ -183,7 +232,7 @@ func (c *Client) attach(out chan []byte, drop context.CancelFunc) [][]byte {
 func (c *Client) detach() []Target {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.out, c.drop = nil, nil
+	c.out, c.drop, c.waiting = nil, nil, nil
 	var held []Target
 	for _, r := range c.regs {
 		if r.sent {
@@ -195,7 +244,8 @@ func (c *Client) detach() []Target {
 }
 
 // write writes replay, then the queue, until ctx ends or a write fails.
-func write(ctx context.Context, ws *websocket.Conn, replay [][]byte, out <-chan []byte, drop context.CancelFunc) {
+func (c *Client) write(ctx context.Context, ws *websocket.Conn, replay [][]byte, out <-chan queued,
+	drop context.CancelFunc) {
 	for _, msg := range replay {
 		if ws.Write(ctx, websocket.MessageText, msg) != nil {
 			drop()
@@ -206,8 +256,9 @@ func write(ctx context.Context, ws *websocket.Conn, replay [][]byte, out <-chan 
 		select {
 		case <-ctx.Done():
 			return
-		case msg := <-out:
-			if ws.Write(ctx, websocket.MessageText, msg) != nil {
+		case q := <-out:
+			c.taken(q)
+			if ws.Write(ctx, websocket.MessageText, q.msg) != nil {
 				drop()
 				return
 			}

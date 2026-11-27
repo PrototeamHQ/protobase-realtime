@@ -35,7 +35,7 @@ func TestAppsNamingOneServiceShareItsClientAcrossReloads(t *testing.T) {
 	if after == before || after == nil || r.links["main"].stop == nil {
 		t.Fatal("a changed key kept the client")
 	}
-	if _, ok := before.Register("a", changes.Start{}, nil); ok {
+	if _, err := before.Register("a", changes.Start{}, nil, nil); err != changes.ErrStopped {
 		t.Fatal("the replaced client still takes registrations")
 	}
 	r.Reload([]config.App{app("a", nil)})

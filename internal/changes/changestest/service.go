@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,10 @@ type Service struct {
 	conns chan *conn
 	conn  *conn
 	ids   map[string][]string
+	// stalled stops the service reading, until the test ends.
+	stalled atomic.Bool
+	// done is closed as the test ends, so a stalled read gives up.
+	done chan struct{}
 }
 
 type conn struct {
@@ -38,9 +43,11 @@ type conn struct {
 // Start serves a recorded session, by name, until the test ends.
 func Start(t *testing.T, name string) *Service {
 	t.Helper()
-	s := &Service{t: t, session: Load(t, name), conns: make(chan *conn, 8), ids: map[string][]string{}}
+	s := &Service{t: t, session: Load(t, name), conns: make(chan *conn, 8), ids: map[string][]string{},
+		done: make(chan struct{})}
 	srv := httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(s.done) })
 	s.URL = "ws" + strings.TrimPrefix(srv.URL, "http") + "/relay"
 	return s
 }
@@ -62,13 +69,25 @@ func (s *Service) serve(w http.ResponseWriter, r *http.Request) {
 	// A cancelled read closes a coder/websocket connection, so the messages are read here, until it closes.
 	defer close(c.messages)
 	for {
+		if s.stalled.Load() {
+			<-s.done
+			return
+		}
 		_, raw, err := ws.Read(context.Background())
 		if err != nil {
 			return
 		}
-		c.messages <- raw
+		select {
+		case c.messages <- raw:
+		case <-s.done:
+			return
+		}
 	}
 }
+
+// Stall makes the service stop reading the relay's connection while it still writes, as the real service does while
+// one app's registrations wait to be applied. It reads at most one more message.
+func (s *Service) Stall() { s.stalled.Store(true) }
 
 // current is the relay's newest connection, waited for when there is none.
 func (s *Service) current() *conn {

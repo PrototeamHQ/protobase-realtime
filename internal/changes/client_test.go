@@ -96,8 +96,8 @@ func startOf(r changestest.Register) Start {
 
 func mustRegister(t *testing.T, c *Client, app string, start Start, g *target) *Registration {
 	t.Helper()
-	r, ok := c.Register(app, start, g)
-	if !ok {
+	r, err := c.Register(app, start, g, nil)
+	if err != nil {
 		t.Fatal("the client refused a registration")
 	}
 	return r
@@ -241,7 +241,7 @@ func TestAStoppedClientTellsItsRegistrationsAndTakesNoMore(t *testing.T) {
 	if got := g.next(); got != "lost" {
 		t.Fatalf("got %s", got)
 	}
-	if _, ok := c.Register(changestest.App, Start{}, g); ok {
+	if _, err := c.Register(changestest.App, Start{}, g, nil); err != ErrStopped {
 		t.Fatal("a stopped client took a registration")
 	}
 }
@@ -262,7 +262,7 @@ func TestAReconnectRegistersMoreThanTheQueueHoldsWithoutDropping(t *testing.T) {
 		mustRegister(t, c, changestest.App, Start{}, g)
 	}
 	dropped := false
-	replay := c.attach(make(chan []byte, queueLength), func() { dropped = true })
+	replay := c.attach(make(chan queued, queueLength), func() { dropped = true })
 	if dropped || len(replay) != queueLength+1 {
 		t.Fatalf("dropped %v, replayed %d", dropped, len(replay))
 	}

@@ -45,12 +45,19 @@ func (r *Registration) Unregister() {
 	c := r.client
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	r.unregisterLocked()
+}
+
+// unregisterLocked ends the registration, under its client's mutex.
+func (r *Registration) unregisterLocked() {
+	c := r.client
 	if c.regs[r.key()] != r {
 		return
 	}
 	delete(c.regs, r.key())
 	if r.sent {
-		c.send(unregisterMessage(r.app, r.id))
+		// An unregister never counts against the app's bound, so the service never keeps a registration nobody holds.
+		c.send(queued{app: r.app, msg: unregisterMessage(r.app, r.id)})
 	}
 }
 
