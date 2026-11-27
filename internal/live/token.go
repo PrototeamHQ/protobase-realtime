@@ -2,13 +2,14 @@
 //
 // A live token is a JWE (alg dir, enc A256GCM) sealed with a key derived from one of the app's ticket keys, so the
 // client can neither read nor change its conditions. Claims: iss (the app id), sub and sid (the person and their
-// sign-in session) or anonymous (true for a visitor, bound to no session), exp, and the read's conditions, which the
-// relay passes on unread.
+// sign-in session) or anonymous (true for a visitor, bound to no session), exp, and the read's subs, fields and
+// snapshot, which the relay passes on to the changes service unread.
 package live
 
 import (
 	"crypto/hkdf"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -33,8 +34,22 @@ type Socket struct {
 }
 
 type claims struct {
-	Session   string `json:"sid"`
-	Anonymous bool   `json:"anonymous"`
+	Session   string          `json:"sid"`
+	Anonymous bool            `json:"anonymous"`
+	Subs      json.RawMessage `json:"subs"`
+	Fields    json.RawMessage `json:"fields"`
+	Snapshot  json.RawMessage `json:"snapshot"`
+}
+
+// Read is what an opened token says of its read: the subscriptions, fields and snapshot as the token holds them, the
+// session that revokes it, or that it is a visitor's, and when it expires.
+type Read struct {
+	Subs      json.RawMessage
+	Fields    json.RawMessage
+	Snapshot  json.RawMessage
+	Session   string
+	Anonymous bool
+	Expiry    time.Time
 }
 
 // Key derives the 256-bit key live tokens are sealed with from a ticket key: HKDF-SHA-256 without salt.
@@ -48,25 +63,26 @@ func Key(ticketKey string) []byte {
 
 // Open decrypts a token under a key derived from any of the ticket keys and checks it is for the socket and valid at
 // now: issued by the socket's app, for its person and session, or for a visitor on an anonymous socket.
-func Open(raw string, ticketKeys []string, s Socket, now time.Time) error {
+func Open(raw string, ticketKeys []string, s Socket, now time.Time) (Read, error) {
 	jwe, err := jwt.ParseEncrypted(raw, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
 	if err != nil {
-		return ErrInvalid
+		return Read{}, ErrInvalid
 	}
 	var std jwt.Claims
 	var own claims
 	if !decrypt(jwe, ticketKeys, &std, &own) {
-		return ErrInvalid
+		return Read{}, ErrInvalid
 	}
 	// RFC 7519 wants now before exp, which the library's check lets equal.
 	if std.Expiry == nil || !now.Before(std.Expiry.Time()) ||
 		std.ValidateWithLeeway(jwt.Expected{Issuer: s.App, Time: now}, 0) != nil {
-		return ErrInvalid
+		return Read{}, ErrInvalid
 	}
 	if !forSocket(std.Subject, own, s) {
-		return ErrInvalid
+		return Read{}, ErrInvalid
 	}
-	return nil
+	return Read{Subs: own.Subs, Fields: own.Fields, Snapshot: own.Snapshot, Session: own.Session,
+		Anonymous: own.Anonymous, Expiry: std.Expiry.Time()}, nil
 }
 
 func decrypt(jwe *jwt.JSONWebToken, ticketKeys []string, out ...any) bool {
