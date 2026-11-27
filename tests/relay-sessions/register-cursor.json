@@ -1,0 +1,171 @@
+{
+  "frames": [
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "fields": [
+          "body"
+        ],
+        "id": "r1",
+        "sid": "s-r1",
+        "snapshot": "819:819:",
+        "subs": [
+          {
+            "resource": "pcs_test_040853_602794016"
+          }
+        ],
+        "type": "register"
+      }
+    },
+    {
+      "from": "service",
+      "message": {
+        "specversion": "1.0",
+        "id": "vOFlh_R-yEI26Yu5fVa6Uw",
+        "source": "https://shop.example",
+        "type": "protobase.changes.transaction",
+        "time": "2026-11-27T04:08:53.723879Z",
+        "datacontenttype": "application/json",
+        "app": "shop",
+        "data": {
+          "registrations": [
+            {
+              "id": "r1",
+              "cursor": "1r-yly3RT3ZHfYP6jnVmXtsspomrAsFiEgX5jfBh41JPv0l6aFEjFQiDYl6jO47tZQ",
+              "changes": [
+                {
+                  "resource": "pcs_test_040853_602794016",
+                  "operation": "insert",
+                  "key": {
+                    "id": "1"
+                  },
+                  "new": {
+                    "body": "one"
+                  },
+                  "subscriptions": [
+                    {
+                      "id": 0,
+                      "effect": "enter"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "from": "service",
+      "message": {
+        "specversion": "1.0",
+        "id": "cE2IzS72zCAMtV1ARfgkxA",
+        "source": "https://shop.example",
+        "type": "protobase.changes.transaction",
+        "time": "2026-11-27T04:08:53.726854Z",
+        "datacontenttype": "application/json",
+        "app": "shop",
+        "data": {
+          "registrations": [
+            {
+              "id": "r1",
+              "cursor": "6i0cBOQCb9Jo8XprzPYCwzrBl_WvmzUH5TkG1UPhjAq6VJRKoXDyRGD5kQPSNQu2SQ",
+              "changes": [
+                {
+                  "resource": "pcs_test_040853_602794016",
+                  "operation": "insert",
+                  "key": {
+                    "id": "2"
+                  },
+                  "new": {
+                    "body": "two"
+                  },
+                  "subscriptions": [
+                    {
+                      "id": 0,
+                      "effect": "enter"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "id": "r1",
+        "type": "unregister"
+      }
+    },
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "cursor": "1r-yly3RT3ZHfYP6jnVmXtsspomrAsFiEgX5jfBh41JPv0l6aFEjFQiDYl6jO47tZQ",
+        "fields": [
+          "body"
+        ],
+        "id": "r2",
+        "sid": "s-r1",
+        "subs": [
+          {
+            "resource": "pcs_test_040853_602794016"
+          }
+        ],
+        "type": "register"
+      }
+    },
+    {
+      "from": "service",
+      "message": {
+        "specversion": "1.0",
+        "id": "cE2IzS72zCAMtV1ARfgkxA",
+        "source": "https://shop.example",
+        "type": "protobase.changes.transaction",
+        "time": "2026-11-27T04:08:53.726854Z",
+        "datacontenttype": "application/json",
+        "app": "shop",
+        "data": {
+          "registrations": [
+            {
+              "id": "r2",
+              "cursor": "6i0cBOQCb9Jo8XprzPYCwzrBl_WvmzUH5TkG1UPhjAq6VJRKoXDyRGD5kQPSNQu2SQ",
+              "changes": [
+                {
+                  "resource": "pcs_test_040853_602794016",
+                  "operation": "insert",
+                  "key": {
+                    "id": "2"
+                  },
+                  "new": {
+                    "body": "two"
+                  },
+                  "subscriptions": [
+                    {
+                      "id": 0,
+                      "effect": "enter"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "id": "r2",
+        "type": "unregister"
+      }
+    }
+  ],
+  "session": "register-cursor"
+}

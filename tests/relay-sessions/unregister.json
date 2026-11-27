@@ -1,0 +1,174 @@
+{
+  "frames": [
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "fields": [
+          "body"
+        ],
+        "id": "r1",
+        "sid": "s-r1",
+        "snapshot": "840:840:",
+        "subs": [
+          {
+            "resource": "pcs_test_040854_158891868"
+          }
+        ],
+        "type": "register"
+      }
+    },
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "fields": [
+          "body"
+        ],
+        "id": "r2",
+        "sid": "s-r2",
+        "snapshot": "840:840:",
+        "subs": [
+          {
+            "resource": "pcs_test_040854_158891868"
+          }
+        ],
+        "type": "register"
+      }
+    },
+    {
+      "from": "service",
+      "message": {
+        "specversion": "1.0",
+        "id": "QvsfdIOBgpqbRL76D7ze8w",
+        "source": "https://shop.example",
+        "type": "protobase.changes.transaction",
+        "time": "2026-11-27T04:08:54.279805Z",
+        "datacontenttype": "application/json",
+        "app": "shop",
+        "data": {
+          "registrations": [
+            {
+              "id": "r1",
+              "cursor": "pBkiAqB-70AVedKU4T0k5Ct6SWN_eiVMZXt83wwVNgQJ50HZarWAmeFrwcGbq5_sOQ",
+              "changes": [
+                {
+                  "resource": "pcs_test_040854_158891868",
+                  "operation": "insert",
+                  "key": {
+                    "id": "1"
+                  },
+                  "new": {
+                    "body": "both"
+                  },
+                  "subscriptions": [
+                    {
+                      "id": 0,
+                      "effect": "enter"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "r2",
+              "cursor": "pBkiAqB-70AVedKU4T0k5Ct6SWN_eiVMZXt83wwVNgQJ50HZarWAmeFrwcGbq5_sOQ",
+              "changes": [
+                {
+                  "resource": "pcs_test_040854_158891868",
+                  "operation": "insert",
+                  "key": {
+                    "id": "1"
+                  },
+                  "new": {
+                    "body": "both"
+                  },
+                  "subscriptions": [
+                    {
+                      "id": 0,
+                      "effect": "enter"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "id": "r1",
+        "type": "unregister"
+      }
+    },
+    {
+      "from": "relay",
+      "message": {
+        "app": "shop",
+        "fields": [
+          "body"
+        ],
+        "id": "r2",
+        "sid": "s-r2",
+        "snapshot": "841:841:",
+        "subs": [
+          {
+            "resource": "pcs_test_040854_158891868"
+          }
+        ],
+        "type": "register"
+      }
+    },
+    {
+      "from": "service",
+      "message": {
+        "type": "refused",
+        "app": "shop",
+        "id": "r2",
+        "reason": "the id is registered already"
+      }
+    },
+    {
+      "from": "service",
+      "message": {
+        "specversion": "1.0",
+        "id": "YuvfUrcas0ACgCTTX8f4ZQ",
+        "source": "https://shop.example",
+        "type": "protobase.changes.transaction",
+        "time": "2026-11-27T04:08:54.284388Z",
+        "datacontenttype": "application/json",
+        "app": "shop",
+        "data": {
+          "registrations": [
+            {
+              "id": "r2",
+              "cursor": "lmF9JV3aG0LAwrTWe6dKJBsvTZgDg2bLjW8UIXy1StbpepPABaA0Lt84AfROukPc4Q",
+              "changes": [
+                {
+                  "resource": "pcs_test_040854_158891868",
+                  "operation": "insert",
+                  "key": {
+                    "id": "2"
+                  },
+                  "new": {
+                    "body": "one"
+                  },
+                  "subscriptions": [
+                    {
+                      "id": 0,
+                      "effect": "enter"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "session": "unregister"
+}
