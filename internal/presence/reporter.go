@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/PrototeamHQ/protobase-realtime/internal/backoff"
 )
 
 // Fixed pacing of reports.
@@ -20,9 +22,7 @@ const (
 	Tick = time.Second
 	// BatchSize caps the changes in one report.
 	BatchSize = 500
-	// maxBackoff caps the wait after failed reports.
-	maxBackoff = time.Minute
-	timeout    = 10 * time.Second
+	timeout   = 10 * time.Second
 )
 
 // report is the body posted to the app. Started is when the relay started: once it differs from the last report's,
@@ -53,7 +53,7 @@ func NewReporter(t *Tracker, url, key string, started time.Time, stuck func(erro
 func (r *Reporter) Run(ctx context.Context) {
 	ticker := time.NewTicker(Tick)
 	defer ticker.Stop()
-	var b backoff
+	var b backoff.Backoff
 	var next time.Time
 	for {
 		select {
@@ -65,13 +65,13 @@ func (r *Reporter) Run(ctx context.Context) {
 			}
 			err := r.Flush(ctx)
 			if err == nil {
-				b.succeed()
+				b.Succeed()
 				continue
 			}
 			if ctx.Err() != nil {
 				return
 			}
-			wait, stuck := b.fail()
+			wait, stuck := b.Fail()
 			if stuck {
 				r.Stuck(err)
 			}
