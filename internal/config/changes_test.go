@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,8 +19,14 @@ func keyFile(t *testing.T, content string) string {
 	return path
 }
 
+// jsonString quotes s as a JSON string, so a native path keeps its separators. A string always encodes.
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 func changesJSON(id, url, keyFile string) string {
-	return `{"id":"` + id + `","url":"` + url + `","key_file":"` + keyFile + `"}`
+	return `{"id":` + jsonString(id) + `,"url":` + jsonString(url) + `,"key_file":` + jsonString(keyFile) + `}`
 }
 
 func TestParsePointsAnAppAtItsChangesService(t *testing.T) {
@@ -50,7 +57,7 @@ func TestParseRefusesChangesServices(t *testing.T) {
 		"no key file": `{"changes":[` + changesJSON("main", "wss://c/relay", filepath.Join(t.TempDir(), "none")) + `],"apps":[]}`,
 		"short key":   `{"changes":[` + changesJSON("main", "wss://c/relay", keyFile(t, "CAgI")) + `],"apps":[]}`,
 		"padded key":  `{"changes":[` + changesJSON("main", "wss://c/relay", keyFile(t, relayKey+"=")) + `],"apps":[]}`,
-		"unknown field": `{"changes":[{"id":"main","url":"wss://c/relay","key_file":"` + good + `","colour":"red"}],` +
+		"unknown field": `{"changes":[{"id":"main","url":"wss://c/relay","key_file":` + jsonString(good) + `,"colour":"red"}],` +
 			`"apps":[]}`,
 	}
 	for name, raw := range cases {
